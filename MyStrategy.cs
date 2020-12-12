@@ -37,10 +37,10 @@ namespace Aicup2020
 
 		private readonly bool[][] _cells = new bool[80][];
 
-		private readonly int _countBuilderBasesInPrevTick = 0;
-		private readonly int _countRangeBasesInPrevTick = 0;
-		private readonly int _countMeleeBasesInPrevTick = 0;
-		private readonly int _countHousesInPrevTick = 0;
+		private int _countBuilderBasesInPrevTick = 0;
+		private int _countRangeBasesInPrevTick = 0;
+		private int _countMeleeBasesInPrevTick = 0;
+		private int _countHousesInPrevTick = 0;
 
 		private int _totalFood = 0;
 		private int _consumedFood = 0;
@@ -176,6 +176,11 @@ namespace Aicup2020
 						repairAction
 					);
 			});
+
+			_countBuilderBasesInPrevTick = builderBases.Count;
+			_countRangeBasesInPrevTick = rangedBases.Count;
+			_countMeleeBasesInPrevTick = meleeBases.Count;
+			_countHousesInPrevTick = houses.Count;
 
 			return result;
 		}
