@@ -43,6 +43,21 @@ namespace Aicup2020
 		private readonly int _countHousesInPrevTick = 0;
 
 		private int _totalFood = 0;
+		private int _consumedFood = 0;
+
+		private Vec2Int _moveTo = new Vec2Int(0,0);
+		private int _angle = 0;
+
+		private const float _buildersPercentage = 0.35f;
+		private const float _armyPercentage = 1.0f - _buildersPercentage;
+
+		private EntityProperties houseProperties;
+		private EntityProperties builderBaseProperties;
+		private EntityProperties rangedBaseProperties;
+		private EntityProperties meleeBaseProperties;
+
+		private bool needHouse = false;
+		private bool newHouseBuilding = false;
 
 		public MyStrategy()
 		{
@@ -72,22 +87,29 @@ namespace Aicup2020
 
 			CollectEntities(playerView);
 
-			EntityProperties houseProperties = playerView.EntityProperties[EntityType.House];
-			EntityProperties builderBaseProperties = playerView.EntityProperties[EntityType.BuilderBase];
-			EntityProperties rangedBaseProperties = playerView.EntityProperties[EntityType.RangedBase];
-			EntityProperties meleeBaseProperties = playerView.EntityProperties[EntityType.MeleeBase];
+			if(_moveTo.X == 0 && _moveTo.Y == 0)
+			{
+				_moveTo.Y = _moveTo.X = playerView.MapSize - 1;
+			}
+
+			houseProperties = playerView.EntityProperties[EntityType.House];
+			builderBaseProperties = playerView.EntityProperties[EntityType.BuilderBase];
+			rangedBaseProperties = playerView.EntityProperties[EntityType.RangedBase];
+			meleeBaseProperties = playerView.EntityProperties[EntityType.MeleeBase];
 
 			// TODO: посчитать количество потребляемой еды используя PopulationProvide
 
-			int consumedFood = builders.Count + rangedUnits.Count + meleeUnits.Count;
+			int buildersCount = builders.Count;
+
+			_consumedFood = buildersCount + rangedUnits.Count + meleeUnits.Count;
 			_totalFood = builderBases.Count * builderBaseProperties.PopulationProvide
 						+ rangedBases.Count * rangedBaseProperties.PopulationProvide
 						+ meleeBases.Count * meleeBaseProperties.PopulationProvide
 						+ houses.Count * houseProperties.PopulationProvide;
 
-			bool needHouse = _totalFood - consumedFood < 5;
+			needHouse = _totalFood - _consumedFood < 5;
 
-			bool newHouseBuilding = false;
+			//newHouseBuilding = false;
 
 			myEntities.ForEach(myEntity =>
 			{
@@ -102,90 +124,49 @@ namespace Aicup2020
 
 				if (myEntity.EntityType == EntityType.BuilderUnit)
 				{
-					if (_repairsActions.TryGetValue(myEntity.Id, out EntityAction entityRepairAction))
+					BuilderUnitLogic(ref moveAction, ref buildAction, ref repairAction, ref attackAction, ref entityAction, ref validAutoAttackTargets, in entityProperties, in myEntity);
+				}
+				else if(!needHouse && myEntity.EntityType is EntityType.BuilderBase)
+				{
+					if (((float)buildersCount / _totalFood) < _buildersPercentage)
 					{
-						if (!houses.Any() || houses.First(q => q.Id == entityRepairAction.RepairAction.Value.Target).Health == houseProperties.MaxHealth)
-						{
-							_repairsActions.Remove(myEntity.Id);
-						}
-						else
-						{
-							result.EntityActions[myEntity.Id] = entityRepairAction;
-							return;
-						}
-					}
-
-					if (_buildersActions.TryGetValue(myEntity.Id, out EntityAction entityBuildAction))
-					{
-						if (houses.Count > 0)
-						{
-							EntityType neededBuildType = entityBuildAction.BuildAction.Value.EntityType;
-							//List<Entity> neededHouses = houses.Where(q => q.EntityType == neededBuildType).ToList();
-
-							int neededHousesCountInPrevTick = neededBuildType switch
-							{
-								EntityType.BuilderBase => _countBuilderBasesInPrevTick,
-								EntityType.RangedBase => _countRangeBasesInPrevTick,
-								EntityType.MeleeBase => _countMeleeBasesInPrevTick,
-								EntityType.House => _countHousesInPrevTick
-							};
-
-							if (houses.Count > neededHousesCountInPrevTick)
-							{
-								_buildersActions.Remove(myEntity.Id);
-
-								Entity lastHouse = houses.OrderByDescending(q => q.Id).First();
-								if (lastHouse.Health < houseProperties.MaxHealth)
-								{
-									repairAction = new RepairAction(lastHouse.Id);
-									entityAction = new EntityAction(moveAction, buildAction, attackAction, repairAction);
-									_repairsActions.Add(myEntity.Id, entityAction.Value);
-								}
-							}
-							else
-							{
-								result.EntityActions[myEntity.Id] = entityBuildAction;
-								return;
-							}
-						}
-						else
-						{
-							result.EntityActions[myEntity.Id] = entityBuildAction;
-							return;
-						}
-					}
-
-					if (needHouse && !newHouseBuilding && _lostResources >= houseProperties.InitialCost && GetFreeLocation(houseProperties.Size, out Vec2Int positon))
-					{
-						validAutoAttackTargets = _emptyEntityTypes;
-						moveAction = new MoveAction(
-							new Vec2Int(positon.X - 1, positon.Y - 1),
-							true,
-							true
-						);
-						buildAction = new BuildAction(EntityType.House, positon);
-
-						entityAction = new EntityAction(moveAction, buildAction, attackAction, repairAction);
-						_buildersActions.Add(myEntity.Id, entityAction.Value);
-						newHouseBuilding = true;
-					}
-					else
-					{
-						validAutoAttackTargets = _resourceEntityTypes;
-						attackAction = new AttackAction(null, new AutoAttack(entityProperties.SightRange, validAutoAttackTargets));
+						buildAction = BuildAction(ref playerView, ref myEntity, ref entityProperties, myEntities);
 					}
 				}
-				else if (!needHouse && myEntity.EntityType is EntityType.BuilderBase or EntityType.RangedBase or EntityType.MeleeBase)
+				else if (!needHouse && myEntity.EntityType is EntityType.RangedBase or EntityType.MeleeBase)
 				{
 					buildAction = BuildAction(ref playerView, ref myEntity, ref entityProperties, myEntities);
 				}
 				else if (myEntity.EntityType is EntityType.MeleeUnit or EntityType.RangedUnit)
 				{
-					moveAction = new MoveAction(
-								new Vec2Int(playerView.MapSize - 1, playerView.MapSize - 1),
-								true,
-								true
-							);
+					attackAction = new AttackAction(null, new AutoAttack(entityProperties.SightRange, validAutoAttackTargets));
+
+					if (_moveTo.X == myEntity.Position.X && _moveTo.Y == myEntity.Position.Y)
+					{
+						switch(_angle)
+						{
+							case 0:
+								_moveTo.Y = 1;
+								_moveTo.X = playerView.MapSize - 1;
+								break;
+							case 1:
+								_moveTo.X = 1;
+								_moveTo.Y = playerView.MapSize - 1;
+								break;
+							default:
+								_moveTo.Y = 10;
+								_moveTo.X = 10;
+								break;
+						}
+
+						_angle++;
+					}
+
+					moveAction = new MoveAction(_moveTo, true, true);
+				}
+				else if(myEntity.EntityType == EntityType.Turret)
+				{
+					attackAction = new AttackAction(null, new AutoAttack(entityProperties.SightRange, validAutoAttackTargets));
 				}
 
 				result.EntityActions[myEntity.Id] = entityAction ?? new EntityAction(
@@ -197,6 +178,83 @@ namespace Aicup2020
 			});
 
 			return result;
+		}
+
+		private void BuilderUnitLogic(ref MoveAction? moveAction, ref BuildAction? buildAction, ref RepairAction? repairAction, ref AttackAction? attackAction, ref EntityAction? entityAction, ref EntityType[] validAutoAttackTargets, in EntityProperties entityProperties, in Entity myEntity)
+		{
+			if (_repairsActions.TryGetValue(myEntity.Id, out EntityAction entityRepairAction))
+			{
+				if (!houses.Any() || houses.First(q => q.Id == entityRepairAction.RepairAction.Value.Target).Health == houseProperties.MaxHealth)
+				{
+					_repairsActions.Remove(myEntity.Id);
+				}
+				else
+				{
+					entityAction = entityRepairAction;
+					return;
+				}
+			}
+
+			if (_buildersActions.TryGetValue(myEntity.Id, out EntityAction entityBuildAction))
+			{
+				if (houses.Count > 0)
+				{
+					EntityType neededBuildType = entityBuildAction.BuildAction.Value.EntityType;
+					//List<Entity> neededHouses = houses.Where(q => q.EntityType == neededBuildType).ToList();
+
+					int neededHousesCountInPrevTick = neededBuildType switch
+					{
+						EntityType.BuilderBase => _countBuilderBasesInPrevTick,
+						EntityType.RangedBase => _countRangeBasesInPrevTick,
+						EntityType.MeleeBase => _countMeleeBasesInPrevTick,
+						EntityType.House => _countHousesInPrevTick
+					};
+
+					if (houses.Count > neededHousesCountInPrevTick)
+					{
+						_buildersActions.Remove(myEntity.Id);
+
+						Entity lastHouse = houses.OrderByDescending(q => q.Id).First();
+						if (lastHouse.Health < houseProperties.MaxHealth)
+						{
+							newHouseBuilding = false;
+							repairAction = new RepairAction(lastHouse.Id);
+							entityAction = new EntityAction(moveAction, buildAction, attackAction, repairAction);
+							_repairsActions.Add(myEntity.Id, entityAction.Value);
+						}
+					}
+					else
+					{
+						entityAction = entityBuildAction;
+						return;
+					}
+				}
+				else
+				{
+					entityAction = entityBuildAction;
+					return;
+				}
+			}
+
+			if (needHouse && !newHouseBuilding && _lostResources >= houseProperties.InitialCost && GetFreeLocation(houseProperties.Size, out Vec2Int positon))
+			{
+				validAutoAttackTargets = _emptyEntityTypes;
+				moveAction = new MoveAction(
+					new Vec2Int(positon.X - 1, positon.Y - 1),
+					true,
+					true
+				);
+				buildAction = new BuildAction(EntityType.House, positon);
+
+				entityAction = new EntityAction(moveAction, buildAction, attackAction, repairAction);
+				_buildersActions.Add(myEntity.Id, entityAction.Value);
+				newHouseBuilding = true;
+			}
+			else
+			{
+				validAutoAttackTargets = _resourceEntityTypes;
+				attackAction = new AttackAction(null, new AutoAttack(entityProperties.SightRange * 5, validAutoAttackTargets));
+			}
 		}
 
 		private bool GetFreeLocation(int size, out Vec2Int position)
@@ -323,7 +381,7 @@ namespace Aicup2020
 
 			EntityProperties buildingEntityProperties = playerView.EntityProperties[entityType];
 
-			if ((currentUnits + 1) * buildingEntityProperties.PopulationUse <= properties.PopulationProvide && _lostResources >= buildingEntityProperties.InitialCost)
+			if (_consumedFood + 1 <= _totalFood && _lostResources >= buildingEntityProperties.InitialCost)
 			{
 				_lostResources -= buildingEntityProperties.InitialCost;
 
