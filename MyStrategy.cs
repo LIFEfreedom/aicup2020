@@ -345,63 +345,118 @@ namespace Aicup2020
 			{
 				for (int x = 1; x < num; x++)
 				{
-					for (int y = 1; y < num; y++)
+					bool notFree = false;
+					int y = num;
+					for (int xi = x; xi <= x + size; xi++)
 					{
-						bool notFree = false;
-						for (int xi = x; xi <= x + size; xi++)
+						for (int yi = y; yi <= y + size; yi++)
 						{
-							for (int yi = y; yi <= y + size; yi++)
+							if (_cells[yi][xi])
 							{
-								if (_cells[yi][xi])
-								{
-									notFree = true;
-									break;
-								}
-							}
-
-							if (notFree)
-							{
+								notFree = true;
 								break;
 							}
 						}
 
-						
-
-						if (!notFree)
+						if (notFree)
 						{
-							bool builderPositionFound = false;
+							break;
+						}
+					}
 
-							for (int i = 0; i < size; i++)
-							{
-								if (!_cells[y - 1][x + i])
-								{
-									builderPositionFound = true;
-									builderPosition = new Vec2Int(x + i, y - 1);
-									break;
-								}
-								else if (!_cells[y + size + 1][x + i])
-								{
-									builderPositionFound = true;
-									builderPosition = new Vec2Int(x + i, y + size);
-									break;
-								}
-								else if (!_cells[y + i][x - 1])
-								{
-									builderPositionFound = true;
-									builderPosition = new Vec2Int(x + i, y + size);
-								}
-								else if (!_cells[y + i][x + size])
-								{
-									builderPositionFound = true;
-									builderPosition = new Vec2Int(x + i, y + size);
-								}
-							}
+					if (!notFree)
+					{
+						bool builderPositionFound = false;
 
-							if(builderPositionFound)
+						for (int i = 0; i < size; i++)
+						{
+							if (!_cells[y - 1][x + i])
 							{
-								buildingPosition = new Vec2Int(x, y);
-								return true;
+								builderPositionFound = true;
+								builderPosition = new Vec2Int(x + i, y - 1);
+								break;
 							}
+							else if (!_cells[y + size + 1][x + i])
+							{
+								builderPositionFound = true;
+								builderPosition = new Vec2Int(x + i, y + size);
+								break;
+							}
+							else if (!_cells[y + i][x - 1])
+							{
+								builderPositionFound = true;
+								builderPosition = new Vec2Int(x + i, y + size);
+							}
+							else if (!_cells[y + i][x + size])
+							{
+								builderPositionFound = true;
+								builderPosition = new Vec2Int(x + i, y + size);
+							}
+						}
+
+						if (builderPositionFound)
+						{
+							buildingPosition = new Vec2Int(x, y);
+							return true;
+						}
+					}
+				}
+				
+				for (int y = 1; y < num; y++)
+				{
+					bool notFree = false;
+					int x = num;
+					for (int xi = x; xi <= x + size; xi++)
+					{
+						for (int yi = y; yi <= y + size; yi++)
+						{
+							if (_cells[yi][xi])
+							{
+								notFree = true;
+								break;
+							}
+						}
+
+						if (notFree)
+						{
+							break;
+						}
+					}
+
+					if (!notFree)
+					{
+						bool builderPositionFound = false;
+
+						for (int i = 0; i < size; i++)
+						{
+							if (!_cells[y - 1][x + i])
+							{
+								builderPositionFound = true;
+								builderPosition = new Vec2Int(x + i, y - 1);
+								break;
+							}
+							else if (!_cells[y + size + 1][x + i])
+							{
+								builderPositionFound = true;
+								builderPosition = new Vec2Int(x + i, y + size);
+								break;
+							}
+							else if (!_cells[y + i][x - 1])
+							{
+								builderPositionFound = true;
+								builderPosition = new Vec2Int(x + i, y + size);
+							}
+							else if (!_cells[y + i][x + size])
+							{
+								builderPositionFound = true;
+								builderPosition = new Vec2Int(x + i, y + size);
+							}
+						}
+
+						if (builderPositionFound)
+						{
+							buildingPosition = new Vec2Int(x, y);
+							return true;
 						}
 					}
 				}
@@ -431,6 +486,9 @@ namespace Aicup2020
 		private void CollectEntities(PlayerView playerView)
 		{
 			int entitiesLenght = playerView.Entities.Length;
+
+			otherArmyInMyBase = null;
+
 			for (int i = 0; i < entitiesLenght; i++)
 			{
 				Entity entity = playerView.Entities[i];
