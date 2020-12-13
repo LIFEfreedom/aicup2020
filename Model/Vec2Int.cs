@@ -21,5 +21,10 @@ namespace Aicup2020.Model
             writer.Write(X);
             writer.Write(Y);
         }
-    }
+
+		public override string ToString()
+		{
+			return $"X: {X}, Y: {Y}";
+		}
+	}
 }
