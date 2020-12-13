@@ -53,7 +53,7 @@ namespace Aicup2020
 		private Vec2Int _moveTo = new Vec2Int(0,0);
 		private int _angle = 0;
 
-		private const float _buildersPercentage = 0.35f;
+		private const float _buildersPercentage = 0.41f;
 		private const float _armyPercentage = 1.0f - _buildersPercentage;
 
 		private EntityProperties houseProperties;
@@ -148,17 +148,9 @@ namespace Aicup2020
 				}
 				else if(myEntity.EntityType is EntityType.BuilderBase)
 				{
-					// !needHouse && 
-					bool needBuilders = ((float)buildersCount / _totalFood) < _buildersPercentage;
-					EntityType buildingEntityType = entityProperties.Build.Value.Options[0];
-					EntityProperties buildingEntityProperties = playerView.EntityProperties[buildingEntityType];
-
-					if ((!needHouse || (needHouse && _lostResources - buildingEntityProperties.InitialCost >= houseProperties.InitialCost)) && needBuilders)
-					{
-						buildAction = BuildAction(myEntity.Position, buildingEntityType, entityProperties.Size, buildingEntityProperties.InitialCost, myEntities);
-					}
+					BuilderBaseLogic(ref playerView, ref myEntity, buildersCount, ref buildAction, ref entityProperties);
 				}
-				else if (!needHouse && myEntity.EntityType is EntityType.RangedBase or EntityType.MeleeBase)
+				else if (myEntity.EntityType is EntityType.RangedBase or EntityType.MeleeBase)
 				{
 					EntityType buildingEntityType = entityProperties.Build.Value.Options[0];
 					bool needArmy = ((float)(myEntity.EntityType == EntityType.RangedBase ? rangedUnits.Count : meleeUnits.Count) / _totalFood) <= _armyPercentage;
@@ -218,6 +210,18 @@ namespace Aicup2020
 			_countHousesInPrevTick = houses.Count;
 
 			return result;
+		}
+
+		private void BuilderBaseLogic(ref PlayerView playerView, ref Entity myEntity, int buildersCount, ref BuildAction? buildAction, ref EntityProperties entityProperties)
+		{
+			bool needBuilders = ((float)buildersCount / _totalFood) < _buildersPercentage;
+			EntityType buildingEntityType = entityProperties.Build.Value.Options[0];
+			EntityProperties buildingEntityProperties = playerView.EntityProperties[buildingEntityType];
+
+			if ((!needHouse || (needHouse && _lostResources - buildingEntityProperties.InitialCost >= houseProperties.InitialCost)) && needBuilders)
+			{
+				buildAction = BuildAction(myEntity.Position, buildingEntityType, entityProperties.Size, buildingEntityProperties.InitialCost, myEntities);
+			}
 		}
 
 		private void BuilderUnitLogic(ref MoveAction? moveAction, ref BuildAction? buildAction, ref RepairAction? repairAction, ref AttackAction? attackAction, ref EntityAction? entityAction, ref EntityType[] validAutoAttackTargets, in EntityProperties entityProperties, in Entity myEntity)
