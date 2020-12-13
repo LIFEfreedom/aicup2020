@@ -33,7 +33,7 @@ namespace Aicup2020
 		private readonly List<Entity> resources = new List<Entity>(1000);
 		private readonly List<Entity> otherEntities = new List<Entity>(100);
 
-		//private Entity? otherArmyInMyBase;
+		private Entity? otherArmyInMyBase;
 
 		private readonly Dictionary<int, EntityAction> _entityActions = new Dictionary<int, EntityAction>(10);
 
@@ -194,7 +194,10 @@ namespace Aicup2020
 						_angle++;
 					}
 
-					moveAction = new MoveAction(_moveTo, true, true);
+					if(otherArmyInMyBase.HasValue)
+						moveAction = new MoveAction(otherArmyInMyBase.Value.Position, true, true);
+					else
+						moveAction = new MoveAction(_moveTo, true, true);
 				}
 				else if(myEntity.EntityType == EntityType.Turret)
 				{
@@ -482,8 +485,28 @@ namespace Aicup2020
 				else
 				{
 					otherEntities.Add(entity);
+
+					if(entity.Position.X <= 32 && entity.Position.Y <= 32)
+					{
+						if(otherArmyInMyBase.HasValue)
+						{
+							if(FindDistance(entity.Position) < FindDistance(otherArmyInMyBase.Value.Position))
+							{
+								otherArmyInMyBase = entity;
+							}
+						}
+						else
+						{
+							otherArmyInMyBase = entity;
+						}
+					}
 				}
 			}
+		}
+
+		private double FindDistance(Vec2Int entityPosition)
+		{
+			return Math.Sqrt(entityPosition.X - 5 + entityPosition.Y - 5);
 		}
 
 		private void ClearLists()
