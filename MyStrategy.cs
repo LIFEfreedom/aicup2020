@@ -38,9 +38,6 @@ namespace Aicup2020
 
 		private readonly Dictionary<int, EntityAction> _entityActions = new Dictionary<int, EntityAction>(10);
 
-		//private readonly SortedDictionary<int, EntityAction> _repairsActions = new();
-		//private readonly SortedDictionary<int, EntityAction> _buildersActions = new();
-
 		private readonly bool[][] _cells = new bool[80][];
 
 		private int _countBuilderBasesInPrevTick = 0;
@@ -68,10 +65,6 @@ namespace Aicup2020
 		private EntityProperties turretProperties;
 		private EntityProperties resourceProperties;
 
-		//private bool needHouse = false;
-		//private bool newHouseBuilding = false;
-		//private bool newRangedBaseBuilding = false;
-
 		private bool onlyBuilders = false;
 
 		private EntityAction? _entityRepairAction = null;
@@ -80,12 +73,98 @@ namespace Aicup2020
 		private int buildingsRangedBaseCount = 0;
 		private int turn = 0;
 
+		private Party _leftDefenseParty = new(10, PartyType.Defense, new Vec2Int(20, 10));
+
+		private Party _rightDefenseParty = new(10, PartyType.Defense, new Vec2Int(10, 20));
+
+		private Party _middleDefenseParty = new(15, PartyType.Defense, new Vec2Int(23, 23));
+
+		private Party _firstAttackParty = new(25, PartyType.Attack);
+		private Party _secondAttackParty = new(20, PartyType.Attack);
+		private Party _otherAttackParty = new(10, PartyType.Hold, new Vec2Int(25,25));
+
 		public MyStrategy()
 		{
 			for (int i = 0; i < 80; i++)
 			{
 				_cells[i] = new bool[80];
 			}
+		}
+
+		private void ArmyUnitLogic(ref Entity myEntity, ref MoveAction? moveAction)
+		{
+			if (TryGetParty(myEntity.Id, out Party party))
+			{
+				party.Turn(myEntity.Id);
+
+				if (party.PartyType == PartyType.Defense)
+				{
+					moveAction = new MoveAction(party.MoveTo, true, true);
+				}
+				else if (party.PartyType == PartyType.Attack)
+				{
+
+				}
+				else
+				{
+					moveAction = new MoveAction(party.MoveTo, true, true);
+				}
+
+				return;
+			}
+
+			Party? prt = null;
+
+			if (_leftDefenseParty.Count < _leftDefenseParty.Capacity)
+			{
+				prt = _leftDefenseParty;
+				_leftDefenseParty.Add(myEntity.Id);
+			}
+			else if (_rightDefenseParty.Count < _rightDefenseParty.Capacity)
+			{
+				prt = _rightDefenseParty;
+				_rightDefenseParty.Add(myEntity.Id);
+			}
+			else if (_middleDefenseParty.Count < _middleDefenseParty.Capacity)
+			{
+				prt = _middleDefenseParty;
+				_middleDefenseParty.Add(myEntity.Id);
+			}
+
+			if (prt.HasValue)
+			{
+				moveAction = new MoveAction(prt.Value.MoveTo, true, true);
+				return;
+			}
+
+			if (_firstAttackParty.Count < _firstAttackParty.Capacity)
+			{
+				prt = _firstAttackParty;
+				_firstAttackParty.Add(myEntity.Id);
+			}
+			else if(_secondAttackParty.Count < _secondAttackParty.Capacity)
+			{
+				prt = _secondAttackParty;
+				_secondAttackParty.Add(myEntity.Id);
+			}
+
+			if(prt.HasValue)
+			{
+				
+				return;
+			}
+
+			_otherAttackParty.Add(myEntity.Id);
+			moveAction = new MoveAction(_otherAttackParty.MoveTo, true, true);
+
+			//if (otherArmyInMyBase.HasValue)
+			//{
+			//	moveAction = new MoveAction(otherArmyInMyBase.Value.Position, true, true);
+			//}
+			//else
+			//{
+			//	moveAction = new MoveAction(_moveTo, true, true);
+			//}
 		}
 
 		public Action GetAction(PlayerView playerView, DebugInterface debugInterface)
@@ -120,7 +199,7 @@ namespace Aicup2020
 
 			CollectEntities(playerView);
 
-			Debug.WriteLine(PrintMap());
+			//Debug.WriteLine(PrintMap());
 
 			if (_moveTo.X == 0 && _moveTo.Y == 0)
 			{
@@ -139,7 +218,6 @@ namespace Aicup2020
 						+ houses.Where(q => q.Active).Count() * houseProperties.PopulationProvide;
 
 			onlyBuilders = rangedBases.Count == 0 && buildersCount < 15 && _totalFood <= 20;
-			//needHouse = _totalFood - _consumedFood < 5 && !entityTasks.Where(q=>q.Value.ActionType == ActionType.Build && q.Value.EntityAction.BuildAction.Value.EntityType == EntityType.House).Any();
 
 			IEnumerable<EntityAction> buildingTasks = entityTasks.Values.Where(q => q.ActionType == ActionType.Build).Select(q => q.EntityAction);
 			int lostResources = _lostResources;
@@ -186,39 +264,11 @@ namespace Aicup2020
 						buildAction = BuildAction(myEntity.Position, buildingEntityType, entityProperties.Size, unitEntityProperties.InitialCost, myEntities);
 					}
 				}
-				else if (myEntity.EntityType is /*EntityType.MeleeUnit or */EntityType.RangedUnit)
+				else if (myEntity.EntityType is EntityType.MeleeUnit or EntityType.RangedUnit)
 				{
 					attackAction = new AttackAction(null, new AutoAttack(entityProperties.SightRange, validAutoAttackTargets));
 
-					if (_moveTo.X == myEntity.Position.X && _moveTo.Y == myEntity.Position.Y)
-					{
-						switch (_angle)
-						{
-							case 0:
-								_moveTo.Y = 1;
-								_moveTo.X = playerView.MapSize - 1;
-								break;
-							case 1:
-								_moveTo.X = 1;
-								_moveTo.Y = playerView.MapSize - 1;
-								break;
-							default:
-								_moveTo.Y = 10;
-								_moveTo.X = 10;
-								break;
-						}
-
-						_angle++;
-					}
-
-					if (otherArmyInMyBase.HasValue)
-					{
-						moveAction = new MoveAction(otherArmyInMyBase.Value.Position, true, true);
-					}
-					else
-					{
-						moveAction = new MoveAction(_moveTo, true, true);
-					}
+					ArmyUnitLogic(ref myEntity, ref moveAction);
 				}
 				else if (myEntity.EntityType == EntityType.Turret)
 				{
@@ -474,9 +524,7 @@ namespace Aicup2020
 				buildAction = new BuildAction(EntityType.House, positon);
 
 				entityAction = new EntityAction(moveAction, buildAction, attackAction, repairAction);
-				//_buildersActions.Add(myEntity.Id, entityAction.Value);
 				entityTasks.Add(myEntity.Id, new EntityTask(myEntity.Id, true, entityAction.Value, ActionType.Build));
-				//newHouseBuilding = true;
 				return;
 			}
 
@@ -783,6 +831,13 @@ namespace Aicup2020
 					_cells[i][k] = false;
 				}
 			}
+
+			_leftDefenseParty.Clear();
+			_rightDefenseParty.Clear();
+			_middleDefenseParty.Clear();
+			_firstAttackParty.Clear();
+			_secondAttackParty.Clear();
+			_otherAttackParty.Clear();
 		}
 
 		private bool TryGetBuilding(int entityId, out Entity building)
@@ -790,6 +845,43 @@ namespace Aicup2020
 			building = allBuildings.FirstOrDefault(e => e.Id == entityId);
 
 			return building.Id > 0;
+		}
+
+		private bool TryGetParty(int entityid, out Party party)
+		{
+			if(_leftDefenseParty.Contains(entityid))
+			{
+				party = _leftDefenseParty;
+				return true;
+			}
+			else if (_rightDefenseParty.Contains(entityid))
+			{
+				party = _rightDefenseParty;
+				return true;
+			}
+			else if (_middleDefenseParty.Contains(entityid))
+			{
+				party = _middleDefenseParty;
+				return true;
+			}
+			else if (_firstAttackParty.Contains(entityid))
+			{
+				party = _firstAttackParty;
+				return true;
+			}
+			else if (_secondAttackParty.Contains(entityid))
+			{
+				party = _secondAttackParty;
+				return true;
+			}
+			else if (_otherAttackParty.Contains(entityid))
+			{
+				party = _otherAttackParty;
+				return true;
+			}
+
+			party = default;
+			return false;
 		}
 
 		private BuildAction? BuildAction(Vec2Int buildingPosition, EntityType buildingEntityType, int size, int initialCost, List<Entity> myEntities)
@@ -865,5 +957,69 @@ namespace Aicup2020
 	{
 		Build,
 		Repair
+	}
+
+	public enum PartyType : byte
+	{
+		Defense,
+		Attack,
+		Hold
+	}
+
+	public struct Party
+	{
+		private List<int> _party;
+		private List<int> _partyTurned;
+
+		private int _capacity;
+		public int Capacity => _capacity;
+
+		private PartyType _partyType;
+		public PartyType PartyType => _partyType;
+
+		private Vec2Int _moveTo;
+		public Vec2Int MoveTo => _moveTo;
+
+
+		public Party(int capacity, PartyType partyType, Vec2Int moveTo)
+		{
+			_capacity = capacity;
+			_party = new List<int>(capacity);
+			_partyTurned = new List<int>(capacity);
+			_partyType = partyType;
+			_moveTo = moveTo;
+		}
+
+		public Party(int capacity, PartyType partyType) : this(capacity, partyType, new Vec2Int()) { }
+
+		public void Add(int entityId)
+		{
+			//if(_party.Contains(entityId))
+			//{
+			//	return false;
+			//}
+
+			_party.Add(entityId);
+			_partyTurned.Add(entityId);
+			//return true;
+		}
+
+		public int Count => _party.Count;
+
+		public bool Contains(int entityId) => _party.Contains(entityId);
+
+		public void Turn(int entityId)
+		{
+			_partyTurned.Add(entityId);
+		}
+
+		public void Clear()
+		{
+			_party.Clear();
+			foreach (int entityId in _partyTurned)
+				_party.Add(entityId);
+
+			_partyTurned.Clear();
+		}
 	}
 }
