@@ -462,10 +462,10 @@ namespace Aicup2020
 									&& housebuildingTasksCount < 1 
 									&& houseRepairingTasksCount < 1);
 
-			bool needMoreHouse = (_totalFood <= 40 && _lostResources > 100 && ((housebuildingTasksCount + houseRepairingTasksCount) < 2))
-									|| (_totalFood > 40 && _lostResources > 200 && ((housebuildingTasksCount + houseRepairingTasksCount) < 3))
-									|| (_totalFood > 50 && _lostResources > 300 && ((housebuildingTasksCount + houseRepairingTasksCount) < 5))
-									|| (_totalFood > 60 && _lostResources > 400 && ((housebuildingTasksCount + houseRepairingTasksCount) < 7));
+			bool needMoreHouse = ((_totalFood <= 40 && _lostResources > 100 && ((housebuildingTasksCount + houseRepairingTasksCount) < 2))
+									|| (foodDeference < 10 && _totalFood > 40 && _lostResources > 200 && ((housebuildingTasksCount + houseRepairingTasksCount) < 3))
+									|| (foodDeference < 15 && _totalFood > 50 && _lostResources > 300 && ((housebuildingTasksCount + houseRepairingTasksCount) < 5))
+									|| (foodDeference < 20 && _totalFood > 60 && _lostResources > 400 && ((housebuildingTasksCount + houseRepairingTasksCount) < 7)));
 
 			if ((needNewHouse || needMoreHouse) && _lostResources >= houseProperties.InitialCost && TryGetFreeLocation(houseProperties.Size, out Vec2Int positon, out Vec2Int houseBuilderPosition))
 			{
