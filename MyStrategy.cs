@@ -30,13 +30,17 @@ namespace Aicup2020
 		private readonly List<Entity> rangedBases = new List<Entity>(1);
 		private readonly List<Entity> meleeBases = new List<Entity>(1);
 		private readonly List<Entity> allBuildings = new List<Entity>(3);
-		private readonly List<Entity> turrets = new List<Entity>(1);
 
 		private readonly List<Entity> resources = new List<Entity>(1000);
-		private readonly List<Entity> _enemyTroops = new List<Entity>(10);
 		private readonly List<Entity> otherEntities = new List<Entity>(100);
+		private readonly List<Entity> _enemyTroops = new List<Entity>(10);
+
+		private Entity? otherArmyInMyBase;
 
 		private readonly Dictionary<int, EntityAction> _entityActions = new Dictionary<int, EntityAction>(10);
+
+		//private readonly SortedDictionary<int, EntityAction> _repairsActions = new();
+		//private readonly SortedDictionary<int, EntityAction> _buildersActions = new();
 
 		private readonly bool[][] _cells = new bool[80][];
 
@@ -45,28 +49,17 @@ namespace Aicup2020
 		private int _countMeleeBasesInPrevTick = 0;
 		private int _countHousesInPrevTick = 0;
 
+		private const double enemyRadiusDetection = 6.5d;
+		private Vec2Int _myBaseCenter = new Vec2Int(5, 5);
+
 		private int _totalFood = 0;
 		private int _consumedFood = 0;
 
-		private Vec2Int _moveTo = new Vec2Int(0, 0);
-		private int direction = 0;
-		private bool destination = true;
-
-		private Vec2Int _myBaseCenter = new Vec2Int(5, 5);
-
-		private Vec2Int _leftFarWorkerPosition = new Vec2Int(5, 5);
-		private Vec2Int _rightFarWorkerPosition = new Vec2Int(5, 5);
+		private Vec2Int _moveTo = new Vec2Int(76, 4);
+		private int _angle = 0;
 
 		private const float _buildersPercentage = 0.41f;
 		private const float _armyPercentage = 1.0f - _buildersPercentage;
-		
-		private const int MyPositionEdge = 35;
-		private const int MiddleRadius = 20;
-		private const double enemyRadiusDetection = 6d;
-		private List<Entity> _leftEnemiesInMyBase = new(2);
-		private List<Entity> _rightEnemiesInMyBase = new(2);
-		private List<Entity> _middleEnemiesInMyBase = new(2);
-		private List<Entity> _threatOfBuilders = new(2);
 
 		private EntityProperties houseProperties;
 		private EntityProperties builderBaseProperties;
@@ -79,257 +72,23 @@ namespace Aicup2020
 		private EntityProperties turretProperties;
 		private EntityProperties resourceProperties;
 
+		//private bool needHouse = false;
+		//private bool newHouseBuilding = false;
+		//private bool newRangedBaseBuilding = false;
+
 		private bool onlyBuilders = false;
 
 		private EntityAction? _entityRepairAction = null;
 		private readonly SortedDictionary<int, EntityTask> entityTasks = new();
+		private int buildingsHouseCount = 0;
+		private int buildingsRangedBaseCount = 0;
 		private int turn = 0;
-
-		private Party _leftDefenseParty = new(5, PartyType.Defense, new Vec2Int(20, 9), DefensePosition.Left);
-
-		private Party _rightDefenseParty = new(5, PartyType.Defense, new Vec2Int(9, 20), DefensePosition.Right);
-
-		private Party _middleDefenseParty = new(7, PartyType.Defense, new Vec2Int(20, 20), DefensePosition.Middle);
-
-		private Party _firstAttackParty = new(15, PartyType.Attack, new Vec2Int(20, 20), DefensePosition.None);
 
 		public MyStrategy()
 		{
 			for (int i = 0; i < 80; i++)
 			{
 				_cells[i] = new bool[80];
-			}
-		}
-
-		private void UpdateAttackTarget()
-		{
-			if (!destination)
-				return;
-
-			destination = false;
-			if (direction == 0)
-			{
-				_moveTo = new Vec2Int(78, 2);
-				direction++;
-			}
-			else if (direction == 1)
-			{
-				_moveTo = new Vec2Int(2, 78);
-				direction++;
-			}
-			else if (direction == 2)
-			{
-				_moveTo = new Vec2Int(78, 78);
-				direction++;
-			}
-			else
-			{
-				if (otherEntities.Count > 0)
-				{
-					_moveTo = otherEntities[0].Position;
-				}
-				else
-				{
-					direction = 0;
-				}
-			}
-		}
-
-		private void ArmyUnitLogic(ref Entity unit, ref MoveAction? moveAction, in AttackAction? attackAction)
-		{
-			if(Math.Abs(FindDistance(unit.Position, _moveTo)) <= 5d)
-			{
-				destination = true;
-			}
-
-			if (TryGetParty(unit.Id, out Party party))
-			{
-				party.Turn(unit.Id);
-
-				if (party.PartyType == PartyType.Defense)
-				{					
-					if(party.DefensePosition == DefensePosition.Left && LeftDefensePartyLogic(ref party, ref moveAction))
-					{
-						return;
-					}
-
-					if (party.DefensePosition == DefensePosition.Right && RightDefensePartyLogic(ref party, ref moveAction))
-					{
-						return;
-					}
-
-					if (party.DefensePosition == DefensePosition.Middle)
-					{
-						if (_threatOfBuilders.Count > 0)
-						{
-							moveAction = new MoveAction(_threatOfBuilders[0].Position, false, false);
-							return;
-						}
-
-						if (MiddleDefensePartyLogic(ref party, ref moveAction))
-							return;
-					}
-
-					moveAction = new MoveAction(party.MoveTo, false, false);
-					return;
-				}
-				else if (party.PartyType == PartyType.Attack)
-				{
-					moveAction = new MoveAction(_moveTo, true, true);
-					//entityTasks[unit.Id] = new EntityTask(unit.Id, false, new EntityAction(moveAction, null, attackAction, null), ActionType.Attack);
-					return;
-
-					if (entityTasks.TryGetValue(unit.Id, out EntityTask task))
-					{
-						if (!party.IsAttacking && unit.Position.X < MyPositionEdge && unit.Position.Y < MyPositionEdge)
-						{
-							moveAction = new MoveAction(party.MoveTo, false, false);
-							entityTasks.Remove(unit.Id);
-						}
-						else
-						{
-							moveAction = task.EntityAction.MoveAction;
-						}
-					}
-
-					if (party.IsAttacking)
-					{
-						moveAction = new MoveAction(_moveTo, true, true);
-						entityTasks[unit.Id] = new EntityTask(unit.Id, false, new EntityAction(moveAction, null, attackAction, null), ActionType.Attack);
-						return;
-					}
-
-					if(party.Count == party.Capacity)
-					{
-						party.IsAttacking = true;
-						moveAction = new MoveAction(_moveTo, true, true);
-						entityTasks[unit.Id] = new EntityTask(unit.Id, false, new EntityAction(moveAction, null, attackAction, null), ActionType.Attack);
-						return;
-					}
-
-					moveAction = new MoveAction(party.MoveTo, false, false);
-					return;
-				}
-			}
-
-			Party? prt = null;
-
-			if (_leftDefenseParty.Count < _leftDefenseParty.Capacity)
-			{
-				prt = _leftDefenseParty;
-				_leftDefenseParty.Add(unit.Id);
-				if(LeftDefensePartyLogic(ref party, ref moveAction))
-				{
-					return;
-				}
-			}
-			else if (_rightDefenseParty.Count < _rightDefenseParty.Capacity)
-			{
-				prt = _rightDefenseParty;
-				_rightDefenseParty.Add(unit.Id);
-				if (RightDefensePartyLogic(ref party, ref moveAction))
-				{
-					return;
-				}
-			}
-			else if (_middleDefenseParty.Count < _middleDefenseParty.Capacity)
-			{
-				prt = _middleDefenseParty;
-				_middleDefenseParty.Add(unit.Id);
-				if (MiddleDefensePartyLogic(ref party, ref moveAction))
-				{
-					return;
-				}
-			}
-
-			if (prt.HasValue)
-			{
-				_firstAttackParty.IsAttacking = false;
-				moveAction = new MoveAction(prt.Value.MoveTo, false, false);
-				return;
-			}
-
-			_firstAttackParty.Add(unit.Id);
-
-			// TODO: убрать дублирование
-			//if (_firstAttackParty.IsAttacking)
-			//{
-			//	moveAction = new MoveAction(_moveTo, true, true);
-			//	entityTasks[unit.Id] = new EntityTask(unit.Id, false, new EntityAction(moveAction, null, attackAction, null), ActionType.Attack);
-			//	return;
-			//}
-
-			//if (_firstAttackParty.Count == _firstAttackParty.Capacity)
-			//{
-			//	_firstAttackParty.IsAttacking = true;
-			//	moveAction = new MoveAction(_moveTo, true, true);
-			//	entityTasks[unit.Id] = new EntityTask(unit.Id, false, new EntityAction(moveAction, null, attackAction, null), ActionType.Attack);
-			//	return;
-			//}
-
-			moveAction = new MoveAction(_firstAttackParty.MoveTo, false, false);
-
-			bool LeftDefensePartyLogic(ref Party party, ref MoveAction? moveAction)
-			{
-				if (_leftEnemiesInMyBase.Count > 0)
-				{
-					Entity enemy = _leftEnemiesInMyBase[0];
-					moveAction = new MoveAction(enemy.Position, false, false);
-				}
-				else if (_rightEnemiesInMyBase.Count > 0 && _rightDefenseParty.Count == 0)
-				{
-					Entity enemy = _rightEnemiesInMyBase[0];
-					moveAction = new MoveAction(enemy.Position, false, false);
-				}
-				else if (_middleEnemiesInMyBase.Count > 0 && _middleDefenseParty.Count == 0)
-				{
-					Entity enemy = _middleEnemiesInMyBase[0];
-					moveAction = new MoveAction(enemy.Position, false, false);
-				}
-
-				return moveAction.HasValue;
-			}
-
-			bool RightDefensePartyLogic(ref Party party, ref MoveAction? moveAction)
-			{
-				if (_rightEnemiesInMyBase.Count > 0)
-				{
-					Entity enemy = _rightEnemiesInMyBase[0];
-					moveAction = new MoveAction(enemy.Position, false, false);
-				}
-				else if (_leftEnemiesInMyBase.Count > 0 && _leftDefenseParty.Count == 0)
-				{
-					Entity enemy = _leftEnemiesInMyBase[0];
-					moveAction = new MoveAction(enemy.Position, false, false);
-				}
-				else if (_middleEnemiesInMyBase.Count > 0 && _middleDefenseParty.Count == 0)
-				{
-					Entity enemy = _middleEnemiesInMyBase[0];
-					moveAction = new MoveAction(enemy.Position, false, false);
-				}
-
-				return moveAction.HasValue;
-			}
-
-			bool MiddleDefensePartyLogic(ref Party party, ref MoveAction? moveAction)
-			{
-				if (_middleEnemiesInMyBase.Count > 0)
-				{
-					Entity enemy = _middleEnemiesInMyBase[0];
-					moveAction = new MoveAction(enemy.Position, false, false);
-				}
-				else if (_leftEnemiesInMyBase.Count > 0 && _leftDefenseParty.Count == 0)
-				{
-					Entity enemy = _leftEnemiesInMyBase[0];
-					moveAction = new MoveAction(enemy.Position, false, false);
-				}
-				else if (_rightEnemiesInMyBase.Count > 0 && _rightDefenseParty.Count == 0)
-				{
-					Entity enemy = _rightEnemiesInMyBase[0];
-					moveAction = new MoveAction(enemy.Position, false, false);
-				}
-
-				return moveAction.HasValue;
 			}
 		}
 
@@ -365,11 +124,12 @@ namespace Aicup2020
 
 			CollectEntities(playerView);
 
-			//Debug.WriteLine(PrintMap());
+			Debug.WriteLine(PrintMap());
 
-			UpdateAttackTarget();
+			// TODO: посчитать количество потребляемой еды используя PopulationProvide
 
 			int buildersCount = builders.Count;
+
 
 			_consumedFood = buildersCount + rangedUnits.Count + meleeUnits.Count;
 			_totalFood = builderBases.Where(q => q.Active).Count() * builderBaseProperties.PopulationProvide
@@ -378,9 +138,13 @@ namespace Aicup2020
 						+ houses.Where(q => q.Active).Count() * houseProperties.PopulationProvide;
 
 			onlyBuilders = rangedBases.Count == 0 && buildersCount < 15 && _totalFood <= 20;
+			//needHouse = _totalFood - _consumedFood < 5 && !entityTasks.Where(q=>q.Value.ActionType == ActionType.Build && q.Value.EntityAction.BuildAction.Value.EntityType == EntityType.House).Any();
 
 			IEnumerable<EntityAction> buildingTasks = entityTasks.Values.Where(q => q.ActionType == ActionType.Build).Select(q => q.EntityAction);
 			int lostResources = _lostResources;
+
+			buildingsHouseCount = 0;
+			buildingsRangedBaseCount = 0;
 
 			foreach (EntityAction b in buildingTasks)
 			{
@@ -389,7 +153,9 @@ namespace Aicup2020
 				lostResources -= entityProperties.InitialCost;
 			}
 
-			builders.ForEach(worker =>
+			//newHouseBuilding = false;
+
+			myEntities.ForEach(myEntity =>
 			{
 				MoveAction? moveAction = null;
 				BuildAction? buildAction = null;
@@ -398,143 +164,86 @@ namespace Aicup2020
 				AttackAction? attackAction = null;
 				EntityAction? entityAction = null;
 
-				EntityProperties entityProperties = GetEntityProperties(worker.EntityType);
+				EntityProperties entityProperties = GetEntityProperties(myEntity.EntityType);
 
-				BuilderUnitLogic(ref moveAction, ref buildAction, ref repairAction, ref attackAction, ref entityAction, ref validAutoAttackTargets, in entityProperties, in worker, ref lostResources);
-
-				result.EntityActions[worker.Id] = entityAction ?? new EntityAction(
-						moveAction,
-						buildAction,
-						attackAction,
-						repairAction
-					);
-			});
-
-			builderBases.ForEach(builderBase =>
-			{
-				MoveAction? moveAction = null;
-				BuildAction? buildAction = null;
-				RepairAction? repairAction = null;
-				AttackAction? attackAction = null;
-				EntityAction? entityAction = null;
-
-				EntityProperties entityProperties = GetEntityProperties(builderBase.EntityType);
-
-
-				BuilderBaseLogic(ref playerView, ref builderBase, buildersCount, ref buildAction, ref entityProperties, ref lostResources);
-
-				result.EntityActions[builderBase.Id] = entityAction ?? new EntityAction(
-						moveAction,
-						buildAction,
-						attackAction,
-						repairAction
-					);
-			});
-
-			if (!onlyBuilders)
-			{
-				rangedBases.ForEach(rangedBase =>
+				if (myEntity.EntityType == EntityType.BuilderUnit)
 				{
-					MoveAction? moveAction = null;
-					BuildAction? buildAction = null;
-					RepairAction? repairAction = null;
-					AttackAction? attackAction = null;
-					EntityAction? entityAction = null;
-
-					EntityProperties entityProperties = GetEntityProperties(rangedBase.EntityType);
-
+					BuilderUnitLogic(ref moveAction, ref buildAction, ref repairAction, ref attackAction, ref entityAction, ref validAutoAttackTargets, in entityProperties, in myEntity);
+				}
+				else if (myEntity.EntityType is EntityType.BuilderBase)
+				{
+					BuilderBaseLogic(ref playerView, ref myEntity, buildersCount, ref buildAction, ref entityProperties, lostResources);
+				}
+				else if (myEntity.EntityType is EntityType.RangedBase)
+				{
 					EntityType buildingEntityType = entityProperties.Build.Value.Options[0];
+					//bool needArmy = ((float)(myEntity.EntityType == EntityType.RangedBase ? rangedUnits.Count : meleeUnits.Count) / _totalFood) <= _armyPercentage;
 					EntityProperties unitEntityProperties = playerView.EntityProperties[buildingEntityType];
 
-					BuildUnitAction(rangedBase.Position, buildingEntityType, entityProperties.Size, unitEntityProperties.InitialCost, ref buildAction, ref lostResources);
-					result.EntityActions[rangedBase.Id] = entityAction ?? new EntityAction(
-							moveAction,
-							buildAction,
-							attackAction,
-							repairAction
-						);
-				});
-
-				meleeBases.ForEach(meleeBase =>
+					if (!onlyBuilders && ((lostResources - unitEntityProperties.InitialCost) >= unitEntityProperties.InitialCost)/* && needArmy*/)
+					{
+						buildAction = BuildAction(myEntity.Position, buildingEntityType, entityProperties.Size, unitEntityProperties.InitialCost, myEntities);
+					}
+				}
+				else if (myEntity.EntityType is EntityType.MeleeBase && rangedBases.Count == 0)
 				{
-					MoveAction? moveAction = null;
-					BuildAction? buildAction = null;
-					RepairAction? repairAction = null;
-					AttackAction? attackAction = null;
-					EntityAction? entityAction = null;
-
-					EntityProperties entityProperties = GetEntityProperties(meleeBase.EntityType);
-
 					EntityType buildingEntityType = entityProperties.Build.Value.Options[0];
+					//bool needArmy = ((float)(myEntity.EntityType == EntityType.RangedBase ? rangedUnits.Count : meleeUnits.Count) / _totalFood) <= _armyPercentage;
 					EntityProperties unitEntityProperties = playerView.EntityProperties[buildingEntityType];
 
-					BuildUnitAction(meleeBase.Position, buildingEntityType, entityProperties.Size, unitEntityProperties.InitialCost, ref buildAction, ref lostResources);
-					result.EntityActions[meleeBase.Id] = entityAction ?? new EntityAction(
-							moveAction,
-							buildAction,
-							attackAction,
-							repairAction
-						);
-				});
-			}
+					if (!onlyBuilders && ((lostResources - unitEntityProperties.InitialCost) >= unitEntityProperties.InitialCost)/* && needArmy*/)
+					{
+						buildAction = BuildAction(myEntity.Position, buildingEntityType, entityProperties.Size, unitEntityProperties.InitialCost, myEntities);
+					}
+				}
+				else if (myEntity.EntityType is EntityType.MeleeUnit or EntityType.RangedUnit)
+				{
+					attackAction = new AttackAction(null, new AutoAttack(entityProperties.SightRange, validAutoAttackTargets));
 
-			rangedUnits.ForEach(rangedUnit =>
-			{
-				MoveAction? moveAction = null;
-				BuildAction? buildAction = null;
-				EntityType[] validAutoAttackTargets = _emptyEntityTypes;
-				RepairAction? repairAction = null;
-				AttackAction? attackAction = null;
-				EntityAction? entityAction = null;
+					if (FindDistance(myEntity.Position, _moveTo) <= 4.0f)
+					{
+						switch (_angle)
+						{
+							case 0:
+								_moveTo.X = 4;
+								_moveTo.Y = 76;
+								break;
+							case 1:
+								_moveTo.X = 78;
+								_moveTo.Y = 78;
+								break;
+							default:
+								if (otherEntities.Count > 0)
+								{
+									_moveTo = otherEntities[0].Position;
+								}
+								else
+								{
+									_moveTo.X = 78;
+									_moveTo.Y = 4;
+									_angle = -1;
+								}
+								break;
+						}
 
-				EntityProperties entityProperties = GetEntityProperties(rangedUnit.EntityType);
+						_angle++;
+					}
 
-				attackAction = new AttackAction(null, new AutoAttack(entityProperties.SightRange, validAutoAttackTargets));
+					if (otherArmyInMyBase.HasValue)
+					{
+						moveAction = new MoveAction(otherArmyInMyBase.Value.Position, true, true);
+					}
+					else
+					{
+						moveAction = new MoveAction(_moveTo, true, true);
+					}
+				}
+				else if (myEntity.EntityType == EntityType.Turret)
+				{
+					attackAction = new AttackAction(null, new AutoAttack(entityProperties.SightRange, validAutoAttackTargets));
+				}
 
-				ArmyUnitLogic(ref rangedUnit, ref moveAction, in attackAction);
-				result.EntityActions[rangedUnit.Id] = entityAction ?? new EntityAction(
-						moveAction,
-						buildAction,
-						attackAction,
-						repairAction
-					);
-			});
-
-			meleeUnits.ForEach(meleeUnit =>
-			{
-				MoveAction? moveAction = null;
-				BuildAction? buildAction = null;
-				EntityType[] validAutoAttackTargets = _emptyEntityTypes;
-				RepairAction? repairAction = null;
-				AttackAction? attackAction = null;
-				EntityAction? entityAction = null;
-
-				EntityProperties entityProperties = GetEntityProperties(meleeUnit.EntityType);
-
-				attackAction = new AttackAction(null, new AutoAttack(entityProperties.SightRange, validAutoAttackTargets));
-
-				ArmyUnitLogic(ref meleeUnit, ref moveAction, in attackAction);
-				result.EntityActions[meleeUnit.Id] = entityAction ?? new EntityAction(
-						moveAction,
-						buildAction,
-						attackAction,
-						repairAction
-					);
-			});
-
-			turrets.ForEach(turret =>
-			{
-				MoveAction? moveAction = null;
-				BuildAction? buildAction = null;
-				EntityType[] validAutoAttackTargets = _emptyEntityTypes;
-				RepairAction? repairAction = null;
-				AttackAction? attackAction = null;
-				EntityAction? entityAction = null;
-
-				EntityProperties entityProperties = GetEntityProperties(turret.EntityType);
-
-				attackAction = new AttackAction(null, new AutoAttack(entityProperties.SightRange, validAutoAttackTargets));
-				result.EntityActions[turret.Id] = entityAction ?? new EntityAction(
+				result.EntityActions[myEntity.Id] = entityAction ?? new EntityAction(
 						moveAction,
 						buildAction,
 						attackAction,
@@ -554,46 +263,42 @@ namespace Aicup2020
 				{
 					entityTasks.Remove(t.EntityId);
 				}
-				else
-				{
-					entityTasks[t.EntityId] = new EntityTask(t.EntityId, t.BuildingIsBuild, t.EntityAction, t.ActionType);
-				}
 			}
-
-			_leftDefenseParty.Clear();
-			_rightDefenseParty.Clear();
-			_middleDefenseParty.Clear();
-			_firstAttackParty.Clear();
 
 			return result;
 		}
 
-		private void BuilderBaseLogic(ref PlayerView playerView, ref Entity myEntity, int buildersCount, ref BuildAction? buildAction, ref EntityProperties entityProperties, ref int lostResources)
+		private void BuilderBaseLogic(ref PlayerView playerView, ref Entity myEntity, int buildersCount, ref BuildAction? buildAction, ref EntityProperties entityProperties, int lostResources)
 		{
-			bool needBuilders = buildersCount < 40 
-									&& (builders.Count < 10 || ((float)buildersCount / _totalFood) < _buildersPercentage
-											|| !rangedBases.Where(q=>q.Active).Any());
-
-			bool isSafely = _leftEnemiesInMyBase.Count == 0 || _rightEnemiesInMyBase.Count == 0 || _middleEnemiesInMyBase.Count == 0;
-
+			bool needBuilders = builders.Count < 10 || ((float)buildersCount / _totalFood) < _buildersPercentage || rangedBases.Where(q => q.Active).Count() == 0;
 			EntityType buildingEntityType = entityProperties.Build.Value.Options[0];
 			EntityProperties buildingEntityProperties = playerView.EntityProperties[buildingEntityType];
 
-			if ((onlyBuilders || needBuilders) && isSafely)
+			if (onlyBuilders || ((lostResources - buildingEntityProperties.InitialCost) >= buildingEntityProperties.InitialCost) && needBuilders)
 			{
-				BuildUnitAction(myEntity.Position, buildingEntityType, entityProperties.Size, buildingEntityProperties.InitialCost, ref buildAction, ref lostResources);
+				buildAction = BuildAction(myEntity.Position, buildingEntityType, entityProperties.Size, buildingEntityProperties.InitialCost, myEntities);
 			}
 		}
 
-		private bool BuilderUnitRepairTaskLogic(ref EntityTask task, ref EntityAction eAction, ref EntityAction? entityAction, int myEntityId)
+		private bool BuilderUnitRepairTaskLogic(ref EntityTask task, ref EntityAction eAction, ref EntityAction? entityAction, int myEntityId, Vec2Int builderPosition)
 		{
 			RepairAction rAction = eAction.RepairAction.Value;
 
 			if (TryGetBuilding(rAction.Target, out Entity repairTarget))
 			{
+				EntityProperties repairTargetProperties = GetEntityProperties(repairTarget.EntityType);
+				if (!CheckBuilderOnBuildingEdge(repairTarget.Position, builderPosition, repairTargetProperties.Size)
+					&& TryGetFreeUnitLocation(repairTarget.Position, repairTargetProperties.Size, out builderPosition))
+				{
+					entityAction = new EntityAction(new MoveAction(builderPosition, false, false), null, null, eAction.RepairAction);
+					task.Processed = true;
+					entityTasks[myEntityId] = new EntityTask(myEntityId, true, entityAction.Value, ActionType.Repair);
+					return true;
+				}
+
 				if (repairTarget.EntityType == EntityType.House)
 				{
-					if (repairTarget.Health == houseProperties.MaxHealth)
+					if (repairTarget.Health == repairTargetProperties.MaxHealth)
 					{
 						entityTasks.Remove(myEntityId);
 					}
@@ -605,7 +310,7 @@ namespace Aicup2020
 				}
 				else if (repairTarget.EntityType == EntityType.RangedBase)
 				{
-					if (repairTarget.Health == rangedBaseProperties.MaxHealth)
+					if (repairTarget.Health == repairTargetProperties.MaxHealth)
 					{
 						entityTasks.Remove(myEntityId);
 						_entityRepairAction = null;
@@ -617,7 +322,7 @@ namespace Aicup2020
 						task.Processed = true;
 					}
 				}
-				
+
 				return true;
 			}
 			else
@@ -628,7 +333,7 @@ namespace Aicup2020
 			return false;
 		}
 
-		private bool BuilderUnitBuildingTaskLogic(ref EntityTask task, ref EntityAction eAction, ref EntityAction? entityAction, int myEntityId)
+		private bool BuilderUnitBuildingTaskLogic(ref EntityTask task, ref EntityAction eAction, ref EntityAction? entityAction, int myEntityId, Vec2Int builderPosition)
 		{
 			BuildAction bAction = eAction.BuildAction.Value;
 			EntityType neededBuildType = bAction.EntityType;
@@ -642,20 +347,16 @@ namespace Aicup2020
 				EntityType.House => _countHousesInPrevTick
 			};
 
-			List<Entity> entities = bAction.EntityType == EntityType.House ? houses : rangedBases;
+			IEnumerable<Entity> entities = (bAction.EntityType == EntityType.House ? houses : rangedBases).Where(q => q.Active == false);
 
-			if(bAction.EntityType == EntityType.RangedBase)
-			{
-				Debug.WriteLine(bAction.EntityType);
-			}
-
-			if (entities.Count > 0)
+			if (entities.Any())
 			{
 				EntityProperties buildingProperties = bAction.EntityType == EntityType.House ? houseProperties : rangedBaseProperties;
 
-				IEnumerable<Entity> inactiveBuildings = entities.Where(q => q.Active == false && q.Position.X == bAction.Position.X && q.Position.Y == bAction.Position.Y && bAction.EntityType == q.EntityType);
+				//IEnumerable<Entity> inactiveBuildings = entities.Where(q => CheckBuilderOnBuildingEdge(q.Position, builderPosition, buildingProperties.Size) && bAction.EntityType == q.EntityType);
+				IEnumerable<Entity> inactiveBuildings = entities.Where(q => q.Position.X == bAction.Position.X && q.Position.Y == bAction.Position.Y && bAction.EntityType == q.EntityType);
 
-				if(inactiveBuildings.Any())
+				if (inactiveBuildings.Any())
 				{
 					entityTasks.Remove(myEntityId);
 
@@ -663,7 +364,7 @@ namespace Aicup2020
 					if (lastBuilding.Health < buildingProperties.MaxHealth)
 					{
 						//newRangedBaseBuilding = false;
-						entityAction = new EntityAction(new MoveAction(new Vec2Int(lastBuilding.Position.X + 1, lastBuilding.Position.Y + 1), true, true), null, null, new RepairAction(lastBuilding.Id));
+						entityAction = new EntityAction(new MoveAction(new Vec2Int(lastBuilding.Position.X + 1, lastBuilding.Position.Y + 1), false, false), null, null, new RepairAction(lastBuilding.Id));
 						entityTasks.Add(myEntityId, new EntityTask(myEntityId, true, entityAction.Value, ActionType.Repair));
 						return true;
 					}
@@ -671,42 +372,81 @@ namespace Aicup2020
 			}
 
 			Vec2Int buildingPosition = bAction.Position;
-			Vec2Int builderPosition = eAction.MoveAction.Value.Target;
-			if (!CheckFreelocation(in buildingPosition, in builderPosition, bProperties.Size) && TryGetFreeLocation(bProperties.Size, out buildingPosition, out builderPosition))
+			Vec2Int moveToBuilderPosition = eAction.MoveAction.Value.Target;
+			if (!CheckFreelocation(in buildingPosition, in moveToBuilderPosition, bProperties.Size) && TryGetFreeLocation(bProperties.Size, out buildingPosition, out moveToBuilderPosition))
 			{
-				LockBuildingPosition(in buildingPosition, in builderPosition, bProperties.Size);
-				entityAction = new EntityAction(new MoveAction(builderPosition, true, true), new BuildAction(bAction.EntityType, buildingPosition), null, null);
+				entityAction = new EntityAction(new MoveAction(moveToBuilderPosition, false, false), new BuildAction(bAction.EntityType, buildingPosition), null, null);
+				entityTasks[myEntityId] = new EntityTask(myEntityId, false, entityAction.Value, ActionType.Build);
 			}
 			else
 			{
-				LockBuildingPosition(in buildingPosition, in builderPosition, bProperties.Size);
 				entityAction = eAction;
+				task.Processed = true;
 			}
-			entityTasks[myEntityId] = new EntityTask(myEntityId, false, entityAction.Value, ActionType.Build);
 
-			task.Processed = true;
+			LockBuildingPosition(in buildingPosition, in moveToBuilderPosition, bProperties.Size);
+
 			return true;
 		}
 
-		private void BuilderUnitLogic(ref MoveAction? moveAction, ref BuildAction? buildAction, ref RepairAction? repairAction, ref AttackAction? attackAction, ref EntityAction? entityAction, ref EntityType[] validAutoAttackTargets, in EntityProperties entityProperties, in Entity myEntity, ref int lostResources)
+		private void LockBuildingPosition(in Vec2Int buildingPosition, in Vec2Int builderPositon, int size)
+		{
+			int x = buildingPosition.X;
+			int y = buildingPosition.Y;
+
+			for (int xi = x; xi < x + size; xi++)
+			{
+				for (int yi = y; yi < y + size; yi++)
+				{
+					_cells[yi][xi] = true;
+				}
+			}
+
+			_cells[builderPositon.Y][builderPositon.X] = true;
+		}
+
+		private double FindDistance(Vec2Int position1, Vec2Int position2)
+		{
+			double xDif = position1.X - position2.X;
+			double yDif = position1.Y - position2.Y;
+			return Math.Sqrt((xDif * xDif) + (yDif * yDif));
+		}
+
+		private bool CheckBuilderOnBuildingEdge(Vec2Int buildingPosition, Vec2Int builderPosition, int buildingSize)
+		{
+			int x1 = buildingPosition.X - 1;
+			int x2 = buildingPosition.X + buildingSize;
+			int y1 = buildingPosition.Y - 1;
+			int y2 = buildingPosition.Y + buildingSize;
+
+			if ((builderPosition.X > x1 && builderPosition.X < x2 && (builderPosition.Y == y1 || builderPosition.Y == y2))
+				|| (builderPosition.Y > y1 && builderPosition.Y < y2 && (builderPosition.X == x1 || builderPosition.X == x2)))
+			{
+				return true;
+			}
+
+			return false;
+		}
+
+		private void BuilderUnitLogic(ref MoveAction? moveAction, ref BuildAction? buildAction, ref RepairAction? repairAction, ref AttackAction? attackAction, ref EntityAction? entityAction, ref EntityType[] validAutoAttackTargets, in EntityProperties entityProperties, in Entity myEntity)
 		{
 			Vec2Int builderPosition = myEntity.Position;
 			var threatsWorker = _enemyTroops.Where(q => Math.Abs(FindDistance(q.Position, builderPosition)) < enemyRadiusDetection);
 			if (threatsWorker.Any())
 			{
 				moveAction = new MoveAction(_myBaseCenter, false, false);
-				_threatOfBuilders.Add(threatsWorker.First());
+				//_threatOfBuilders.Add(threatsWorker.First());
 				return;
 			}
 
 			if (entityTasks.TryGetValue(myEntity.Id, out EntityTask task))
 			{
 				EntityAction eAction = task.EntityAction;
-				if (task.ActionType == ActionType.Repair && BuilderUnitRepairTaskLogic(ref task, ref eAction, ref entityAction, myEntity.Id))
+				if (task.ActionType == ActionType.Repair && BuilderUnitRepairTaskLogic(ref task, ref eAction, ref entityAction, myEntity.Id, myEntity.Position))
 				{
 					return;
 				}
-				else if (task.ActionType == ActionType.Build && BuilderUnitBuildingTaskLogic(ref task, ref eAction, ref entityAction, myEntity.Id))
+				else if (task.ActionType == ActionType.Build && BuilderUnitBuildingTaskLogic(ref task, ref eAction, ref entityAction, myEntity.Id, myEntity.Position))
 				{
 					return;
 				}
@@ -715,11 +455,9 @@ namespace Aicup2020
 			{
 				RepairAction rAction = _entityRepairAction.Value.RepairAction.Value;
 
-				if (TryGetBuilding(rAction.Target, out Entity repairTarget) 
-					&& repairTarget.EntityType == EntityType.RangedBase 
-					&& entityTasks.Count(q => q.Value.ActionType == ActionType.Repair && q.Value.EntityAction.RepairAction.HasValue && q.Value.EntityAction.RepairAction.Value.Target == rAction.Target) < 5)
+				if (TryGetBuilding(rAction.Target, out Entity repairTarget) && repairTarget.EntityType == EntityType.RangedBase && entityTasks.Count(q => q.Value.EntityAction.RepairAction.HasValue && q.Value.EntityAction.RepairAction.Value.Target == rAction.Target) < 4)
 				{
-					moveAction = new MoveAction(new Vec2Int(repairTarget.Position.X + 1, repairTarget.Position.Y + 1), true, true);
+					moveAction = new MoveAction(new Vec2Int(repairTarget.Position.X + 1, repairTarget.Position.Y + 1), false, false);
 
 					if (repairTarget.Health == rangedBaseProperties.MaxHealth)
 					{
@@ -728,9 +466,11 @@ namespace Aicup2020
 					}
 					else
 					{
+						//_entityRepairAction = entityRepairAction;
 						entityAction = new EntityAction(moveAction, buildAction, attackAction, rAction);
 
 						entityTasks.Add(myEntity.Id, new EntityTask(myEntity.Id, true, entityAction.Value, ActionType.Repair));
+						//_repairsActions.Add(myEntity.Id, entityAction.Value);
 						return;
 					}
 				}
@@ -764,118 +504,52 @@ namespace Aicup2020
 				&& rangedBasebuildingTasksCount == 0
 				&& rangedBaseRepairingTasksCount == 0
 				&& !onlyBuilders
-				&& lostResources >= rangedBaseProperties.InitialCost
+				&& _lostResources >= rangedBaseProperties.InitialCost
 				&& TryGetFreeLocation(rangedBaseProperties.Size, out Vec2Int buildingPositon, out Vec2Int rangedBaseBuilderPosition))
 			{
 				validAutoAttackTargets = _emptyEntityTypes;
-				moveAction = new MoveAction(rangedBaseBuilderPosition, true, true);
+				moveAction = new MoveAction(rangedBaseBuilderPosition, false, false);
 				buildAction = new BuildAction(EntityType.RangedBase, buildingPositon);
 
 				entityAction = new EntityAction(moveAction, buildAction, attackAction, repairAction);
+
+				LockBuildingPosition(in buildingPositon, in rangedBaseBuilderPosition, rangedBaseProperties.Size);
+
 				entityTasks.Add(myEntity.Id, new EntityTask(myEntity.Id, true, entityAction.Value, ActionType.Build));
+				//newRangedBaseBuilding = true;
 				return;
 			}
 
 			int foodDeference = _totalFood - _consumedFood;
+			bool needNewHouse = (_totalFood > 50
+									&& foodDeference < 10
+									&& (housebuildingTasksCount + houseRepairingTasksCount) < 2)
+								|| (_totalFood <= 50
+									&& foodDeference < 5
+									&& housebuildingTasksCount < 1
+									&& houseRepairingTasksCount < 1);
 
-			bool needNewHouse = (_totalFood < 30 && foodDeference < 10 && (housebuildingTasksCount + houseRepairingTasksCount) < 3)
-									|| (_totalFood >= 30 && rangedBases.Count > 0 && foodDeference < 10 && (housebuildingTasksCount + houseRepairingTasksCount) < 3)
-									|| (_totalFood >= 30 && (rangedBases.Count == 0 && lostResources > 550 || rangedBases.Count == 0 && rangedBasebuildingTasksCount > 0 && lostResources >= 100) && foodDeference < 10 && (housebuildingTasksCount + houseRepairingTasksCount) < 3);
+			bool needMoreHouse = foodDeference < 10 && ((_totalFood <= 40 && _lostResources > 100 && ((housebuildingTasksCount + houseRepairingTasksCount) < 2))
+									|| (_totalFood > 40 && _lostResources > 200 && ((housebuildingTasksCount + houseRepairingTasksCount) < 3))
+									|| (_totalFood > 50 && _lostResources > 300 && ((housebuildingTasksCount + houseRepairingTasksCount) < 5))
+									|| (_totalFood > 60 && _lostResources > 400 && ((housebuildingTasksCount + houseRepairingTasksCount) < 7)));
 
-			//bool needNewHouse = (_totalFood > 50 
-			//						&& foodDeference < 10
-			//						&& (housebuildingTasksCount + houseRepairingTasksCount) < 2)
-			//					|| (_totalFood <= 50 
-			//						&& foodDeference < 5 
-			//						&& housebuildingTasksCount < 1 
-			//						&& houseRepairingTasksCount < 1);
-
-			//bool needMoreHouse = (_totalFood < 30 && rangedBases.Count == 0) && ((_totalFood <= 40 && lostResources > 100 && ((housebuildingTasksCount + houseRepairingTasksCount) < 3))
-			//						|| (foodDeference < 10 && _totalFood > 30 
-			//							&& (lostResources > 150 
-			//									&& ((housebuildingTasksCount + houseRepairingTasksCount) < 3))
-			//								|| lostResources > 200 && ((housebuildingTasksCount + houseRepairingTasksCount) < 4))
-			//						|| (foodDeference < 15 && _totalFood > 50 
-			//							&& (lostResources > 200 
-			//									&& ((housebuildingTasksCount + houseRepairingTasksCount) < 5))
-			//								|| lostResources > 250 && ((housebuildingTasksCount + houseRepairingTasksCount) < 6))
-			//						|| (foodDeference < 20 && _totalFood > 60 
-			//							&& (lostResources > 250 
-			//									&& ((housebuildingTasksCount + houseRepairingTasksCount) < 7))
-			//								|| lostResources > 300
-			//									&& ((housebuildingTasksCount + houseRepairingTasksCount) < 8)));
-
-			if (needNewHouse && lostResources >= houseProperties.InitialCost && TryGetFreeLocation(houseProperties.Size, out Vec2Int positon, out Vec2Int houseBuilderPosition))
+			if ((needNewHouse || needMoreHouse) && _lostResources >= houseProperties.InitialCost && TryGetFreeLocation(houseProperties.Size, out Vec2Int positon, out Vec2Int houseBuilderPosition))
 			{
 				validAutoAttackTargets = _emptyEntityTypes;
-				moveAction = new MoveAction(houseBuilderPosition, true, true);
+				moveAction = new MoveAction(houseBuilderPosition, false, false);
 				buildAction = new BuildAction(EntityType.House, positon);
 
 				entityAction = new EntityAction(moveAction, buildAction, attackAction, repairAction);
+				LockBuildingPosition(in positon, in houseBuilderPosition, rangedBaseProperties.Size);
+				//_buildersActions.Add(myEntity.Id, entityAction.Value);
 				entityTasks.Add(myEntity.Id, new EntityTask(myEntity.Id, true, entityAction.Value, ActionType.Build));
+				//newHouseBuilding = true;
 				return;
 			}
 
 			validAutoAttackTargets = _resourceEntityTypes;
-			attackAction = new AttackAction(null, new AutoAttack(80, validAutoAttackTargets));
-		}
-
-		private void LockBuildingPosition(in Vec2Int buildingPosition, in Vec2Int builderPositon, int size)
-		{
-			int x = buildingPosition.X;
-			int y = buildingPosition.Y;
-
-			for (int xi = x; xi < x + size; xi++)
-			{
-				for (int yi = y; yi < y + size; yi++)
-				{
-					_cells[yi][xi] = true;
-				}
-			}
-
-			_cells[builderPositon.Y][builderPositon.X] = true;
-		}
-
-		private bool TryGetFreeUnitLocation(in Vec2Int buildingPosition, int size, out Vec2Int unitPosition)
-		{
-			int x = buildingPosition.X;
-			int y = buildingPosition.Y;
-
-			int x1 = x - 1;
-			int x2 = x + size;
-			int y1 = y - 1;
-			int y2 = y + size;
-
-
-			for (int i = 0; i < size; i++)
-			{
-				int xi = x + i;
-				int yi = y + i;
-
-				if (!_cells[y1][xi])
-				{
-					unitPosition = new Vec2Int(xi, y1);
-					return true;
-				}
-				else if (!_cells[y2][xi])
-				{
-					unitPosition = new Vec2Int(xi, y2);
-					return true;
-				}
-				else if (!_cells[yi][x1])
-				{
-					unitPosition = new Vec2Int(x1, yi);
-					return true;
-				}
-				else if (!_cells[yi][x2])
-				{
-					unitPosition = new Vec2Int(x2, yi);
-					return true;
-				}
-			}
-
-			unitPosition = default;
-			return false;
+			attackAction = new AttackAction(null, new AutoAttack(60, validAutoAttackTargets));
 		}
 
 		private bool CheckFreelocation(in Vec2Int buildingPosition, in Vec2Int builderPositon, int size)
@@ -905,7 +579,7 @@ namespace Aicup2020
 			{
 				bool builderPositionFound = false;
 
-				if(_cells[builderPositon.Y][builderPositon.X])
+				if (_cells[builderPositon.Y][builderPositon.X])
 				{
 					builderPositionFound = true;
 				}
@@ -925,7 +599,7 @@ namespace Aicup2020
 			{
 				for (int x = 1; x < num; x++)
 				{
-					for(int y = 1; y < num; y++)
+					for (int y = 1; y < num; y++)
 					{
 						bool isFree = true;
 						for (int xi = x; xi < x + size; xi++)
@@ -949,7 +623,7 @@ namespace Aicup2020
 						{
 							buildingPosition = new Vec2Int(x, y);
 
-							if (TryGetFreeUnitLocation(in buildingPosition, size, out builderPosition))
+							if (TryGetFreeUnitLocation(buildingPosition, size, out builderPosition))
 								return true;
 						}
 
@@ -991,6 +665,48 @@ namespace Aicup2020
 			return false;
 		}
 
+		private bool TryGetFreeUnitLocation(Vec2Int buildingPosition, int size, out Vec2Int unitPosition)
+		{
+			int x = buildingPosition.X;
+			int y = buildingPosition.Y;
+
+			int x1 = x - 1;
+			int x2 = x + size;
+			int y1 = y - 1;
+			int y2 = y + size;
+
+
+			for (int i = 0; i < size; i++)
+			{
+				int xi = x + i;
+				int yi = y + i;
+
+				if (!_cells[y1][xi])
+				{
+					unitPosition = new Vec2Int(xi, y1);
+					return true;
+				}
+				else if (!_cells[y2][xi])
+				{
+					unitPosition = new Vec2Int(xi, y2);
+					return true;
+				}
+				else if (!_cells[yi][x1])
+				{
+					unitPosition = new Vec2Int(x1, yi);
+					return true;
+				}
+				else if (!_cells[yi][x2])
+				{
+					unitPosition = new Vec2Int(x2, yi);
+					return true;
+				}
+			}
+
+			unitPosition = default;
+			return false;
+		}
+
 		private EntityProperties GetEntityProperties(EntityType entityType)
 		{
 			return entityType switch
@@ -1013,7 +729,7 @@ namespace Aicup2020
 		{
 			int entitiesLenght = playerView.Entities.Length;
 
-			//otherArmyInMyBase = null;
+			otherArmyInMyBase = null;
 
 			for (int i = 0; i < entitiesLenght; i++)
 			{
@@ -1022,6 +738,7 @@ namespace Aicup2020
 
 				int x = entity.Position.X;
 				int y = entity.Position.Y;
+				//_cells[y][x] = true;
 
 				for (int xi = x; xi < x + entityProperties.Size; xi++)
 				{
@@ -1071,41 +788,24 @@ namespace Aicup2020
 				{
 					otherEntities.Add(entity);
 
-					if(entity.EntityType is EntityType.RangedUnit or EntityType.MeleeUnit or EntityType.Turret)
+					if (entity.EntityType is EntityType.RangedUnit or EntityType.MeleeUnit or EntityType.Turret)
 					{
 						_enemyTroops.Add(entity);
 					}
 
-					if (entity.Position.X <= MyPositionEdge && entity.Position.Y <= MyPositionEdge)
+					if (entity.Position.X <= 32 && entity.Position.Y <= 32)
 					{
-						if(entity.Position.Y - entity.Position.X >= 0)
+						if (otherArmyInMyBase.HasValue)
 						{
-							_leftEnemiesInMyBase.Add(entity);
+							if (FindDistance(entity.Position) < FindDistance(otherArmyInMyBase.Value.Position))
+							{
+								otherArmyInMyBase = entity;
+							}
 						}
 						else
 						{
-							_rightEnemiesInMyBase.Add(entity);
+							otherArmyInMyBase = entity;
 						}
-
-						if(entity.Position.Y > MyPositionEdge - MiddleRadius
-							&& entity.Position.Y < MyPositionEdge
-							&& entity.Position.X > MyPositionEdge - MiddleRadius
-							&& entity.Position.X < MyPositionEdge)
-						{
-							_middleEnemiesInMyBase.Add(entity);
-						}
-
-						//if (otherArmyInMyBase.HasValue)
-						//{
-						//	if (FindDistance(entity.Position) < FindDistance(otherArmyInMyBase.Value.Position))
-						//	{
-						//		otherArmyInMyBase = entity;
-						//	}
-						//}
-						//else
-						//{
-						//	otherArmyInMyBase = entity;
-						//}
 					}
 				}
 			}
@@ -1113,37 +813,22 @@ namespace Aicup2020
 
 		private double FindDistance(Vec2Int entityPosition) => FindDistance(entityPosition, _myBaseCenter);
 
-		private double FindDistance(Vec2Int position1, Vec2Int position2)
-		{
-			double xDif = position1.X - position2.X;
-			double yDif = position1.Y - position2.Y;
-			return Math.Sqrt((xDif * xDif) + (yDif * yDif));
-		}
-
 		private void ClearLists()
 		{
-			resources.Clear();
-
-			// Units
 			myEntities.Clear();
+			resources.Clear();
+			otherEntities.Clear();
+			_enemyTroops.Clear();
+
 			builders.Clear();
 			rangedUnits.Clear();
 			meleeUnits.Clear();
 
-			// Buildings
 			allBuildings.Clear();
 			builderBases.Clear();
 			rangedBases.Clear();
 			meleeBases.Clear();
 			houses.Clear();
-			turrets.Clear();
-
-			// Enemies
-			otherEntities.Clear();
-			_leftEnemiesInMyBase.Clear();
-			_rightEnemiesInMyBase.Clear();
-			_middleEnemiesInMyBase.Clear();
-			_enemyTroops.Clear();
 
 			for (int i = 0; i < 80; i++)
 			{
@@ -1161,41 +846,28 @@ namespace Aicup2020
 			return building.Id > 0;
 		}
 
-		private bool TryGetParty(int entityid, out Party party)
+		private BuildAction? BuildAction(Vec2Int buildingPosition, EntityType buildingEntityType, int size, int initialCost, List<Entity> myEntities)
 		{
-			if(_leftDefenseParty.Contains(entityid))
+			int currentUnits = 0;
+			foreach (Entity otherEntity in myEntities)
 			{
-				party = _leftDefenseParty;
-				return true;
-			}
-			else if (_rightDefenseParty.Contains(entityid))
-			{
-				party = _rightDefenseParty;
-				return true;
-			}
-			else if (_middleDefenseParty.Contains(entityid))
-			{
-				party = _middleDefenseParty;
-				return true;
-			}
-			else if (_firstAttackParty.Contains(entityid))
-			{
-				party = _firstAttackParty;
-				return true;
+				if (otherEntity.EntityType == buildingEntityType)
+				{
+					currentUnits++;
+				}
 			}
 
-			party = default;
-			return false;
-		}
-
-		private void BuildUnitAction(Vec2Int buildingPosition, EntityType buildingEntityType, int size, int initialCost, ref BuildAction? buildAction, ref int lostResources)
-		{
-			if (_consumedFood + 1 <= _totalFood && lostResources >= initialCost && TryGetFreeUnitLocation(in buildingPosition, size, out Vec2Int unitPosition))
+			if (_consumedFood + 1 <= _totalFood && _lostResources >= initialCost)
 			{
-				lostResources -= initialCost;
+				_lostResources -= initialCost;
 
-				buildAction =  new BuildAction(buildingEntityType, unitPosition);
+				return new BuildAction(
+					buildingEntityType,
+					new Vec2Int(buildingPosition.X + size, buildingPosition.Y + size - 1)
+				);
 			}
+
+			return null;
 		}
 
 		public void DebugUpdate(PlayerView playerView, DebugInterface debugInterface)
@@ -1246,89 +918,6 @@ namespace Aicup2020
 	public enum ActionType : byte
 	{
 		Build,
-		Repair,
-		Attack
-	}
-
-	public enum PartyType : byte
-	{
-		Defense,
-		Attack,
-		Hold
-	}
-
-	public enum DefensePosition : byte
-	{
-		Left,
-		Right,
-		Middle,
-		Hold,
-		None
-	}
-
-	public struct Party
-	{
-		private List<int> _party;
-		private List<int> _partyTurned;
-
-		private int _capacity;
-		public int Capacity => _capacity;
-
-		private PartyType _partyType;
-		public PartyType PartyType => _partyType;
-
-		private Vec2Int _moveTo;
-		public Vec2Int MoveTo => _moveTo;
-
-		private DefensePosition _defensePosition;
-		public DefensePosition DefensePosition => _defensePosition;
-
-		public bool IsAttacking { get; set; }
-
-		public Party(int capacity, PartyType partyType, Vec2Int moveTo, DefensePosition defensePosition)
-		{
-			_capacity = capacity;
-			_party = new List<int>(capacity);
-			_partyTurned = new List<int>(capacity);
-			_partyType = partyType;
-			_moveTo = moveTo;
-			_defensePosition = defensePosition;
-			IsAttacking = false;
-		}
-
-		public Party(int capacity, PartyType partyType) : this(capacity, partyType, default, DefensePosition.None) { }
-
-		public void Add(int entityId)
-		{
-			//if(_party.Contains(entityId))
-			//{
-			//	return false;
-			//}
-
-			_party.Add(entityId);
-			_partyTurned.Add(entityId);
-			//return true;
-		}
-
-		public int Count => _party.Count;
-
-		public bool Contains(int entityId) => _party.Contains(entityId);
-
-		public void Turn(int entityId)
-		{
-			_partyTurned.Add(entityId);
-		}
-
-		public void Clear()
-		{
-			_party.Clear();
-			foreach (int entityId in _partyTurned)
-				_party.Add(entityId);
-
-			_partyTurned.Clear();
-
-			if (_party.Count == 0)
-				IsAttacking = false;
-		}
+		Repair
 	}
 }
