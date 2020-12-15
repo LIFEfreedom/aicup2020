@@ -59,6 +59,46 @@ namespace Aicup2020
 		private int _angle = 0;
 
 		private const float _buildersPercentage = 0.41f;
+
+		private struct StageProperties
+		{
+			public StageProperties(int maxTotalFood, int minConsumedFood, int minBuildersCount, int minArmyCount, float buildersPercentage)
+			{
+				MaxTotalFood = maxTotalFood;
+				MinConsumedFood = minConsumedFood;
+				MinBuildersCount = minBuildersCount;
+				MinArmyCount = minArmyCount;
+				BuildersPercentage = buildersPercentage;
+			}
+
+			public float BuildersPercentage { get; }
+
+			public int MaxTotalFood { get; }
+
+			public int MinConsumedFood { get; }
+
+			public int MinBuildersCount { get; }
+
+			public int MinArmyCount { get; }
+		}
+
+		private List<StageProperties> _stages = new()
+		{
+			new StageProperties(15, 0, 0, 0, 1f),
+			new StageProperties(20, 15, 15, 0, 1f),
+			new StageProperties(30, 20, 20, 0, 0.5f),
+			new StageProperties(40, 30, 25, 5, 0.9f),
+			new StageProperties(45, 40, 34, 6, 0.4f),
+			new StageProperties(50, 45, 36, 9, 0f),
+			new StageProperties(60, 50, 36, 14, 0.5f),
+			new StageProperties(70, 60, 41, 19, 0.4f),
+			new StageProperties(80, 70, 45, 25, 0f),
+			new StageProperties(90, 80, 45, 35, 0.5f),
+			new StageProperties(110, 90, 50, 40, 0.2f),
+			new StageProperties(130, 100, 50, 50, 0.2f),
+			new StageProperties(300, 130, 60, 60, 0.2f),
+		};
+
 		private const float _armyPercentage = 1.0f - _buildersPercentage;
 
 		private EntityProperties houseProperties;
@@ -908,13 +948,6 @@ namespace Aicup2020
 
 				buildAction = new BuildAction(buildingEntityType, unitPosition);
 			}
-		}
-
-		private struct Point
-		{
-			public int X;
-
-			public int Y;
 		}
 
 		public void DebugUpdate(PlayerView playerView, DebugInterface debugInterface)
