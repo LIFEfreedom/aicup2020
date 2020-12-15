@@ -13,6 +13,17 @@ namespace Aicup2020
 {
 	public class MyStrategy
 	{
+		//private enum CellType : byte
+		//{
+		//	Free,
+		//	Resource,
+		//	Unit,
+		//	Building,
+		//	Enemy
+		//}
+
+		//private readonly CellType[][] _cells = new CellType[80][];
+
 		private readonly EntityType[] _emptyEntityTypes = Array.Empty<EntityType>();
 		private readonly EntityType[] _resourceEntityTypes = new EntityType[1] { EntityType.Resource };
 
@@ -130,6 +141,7 @@ namespace Aicup2020
 		{
 			for (int i = 0; i < 80; i++)
 			{
+				//_cells[i] = new CellType[80];
 				_cells[i] = new bool[80];
 			}
 		}
@@ -255,6 +267,8 @@ namespace Aicup2020
 				}
 				else if (myEntity.EntityType is EntityType.MeleeUnit or EntityType.RangedUnit)
 				{
+					//moveAction = new MoveAction(new Vec2Int(25,25), true, true);
+
 					attackAction = new AttackAction(null, new AutoAttack(entityProperties.SightRange, validAutoAttackTargets));
 
 					if (FindDistance(myEntity.Position, _moveTo) <= 4.0f)
@@ -453,17 +467,13 @@ namespace Aicup2020
 
 			Vec2Int buildingPosition = bAction.Position;
 			Vec2Int moveToBuilderPosition = eAction.MoveAction.Value.Target;
-			if (!CheckFreelocation(in buildingPosition, in moveToBuilderPosition, bProperties.Size)
-				&& TryGetFreeLocation(bProperties.Size, out buildingPosition, out moveToBuilderPosition))
-			{
-				entityAction = new EntityAction(new MoveAction(moveToBuilderPosition, true, false), new BuildAction(bAction.EntityType, buildingPosition), null, null);
-				entityTasks[myEntityId] = new EntityTask(myEntityId, false, entityAction.Value, ActionType.Build);
-			}
-			else
+
+			if(CheckFreelocation(in buildingPosition, in builderPosition, bProperties.Size))
 			{
 				if (CheckBuilderOnBuildingEdge(buildingPosition, builderPosition, bProperties.Size))
 				{
-					entityAction = new EntityAction(null, bAction, null, null);
+					moveToBuilderPosition = builderPosition;
+					entityAction = new EntityAction(new MoveAction(builderPosition, true, true), bAction, null, null);
 					entityTasks[myEntityId] = new EntityTask(myEntityId, false, entityAction.Value, ActionType.Build);
 				}
 				else
@@ -471,6 +481,16 @@ namespace Aicup2020
 					entityAction = eAction;
 					task.Processed = true;
 				}
+			}
+			else if(TryGetFreeLocation(bProperties.Size, out buildingPosition, out moveToBuilderPosition))
+			{
+				entityAction = new EntityAction(new MoveAction(moveToBuilderPosition, true, false), new BuildAction(bAction.EntityType, buildingPosition), null, null);
+				entityTasks[myEntityId] = new EntityTask(myEntityId, false, entityAction.Value, ActionType.Build);
+			}
+			else
+			{
+				entityTasks.Remove(myEntityId);
+				return false;
 			}
 
 			LockBuildingPosition(in buildingPosition, in moveToBuilderPosition, bProperties.Size);
@@ -653,7 +673,7 @@ namespace Aicup2020
 
 				for (int yi = y; yi < y + size; yi++)
 				{
-					if (_cells[yi][xi])
+					if (yi != builderPositon.Y && xi != builderPositon.X && _cells[yi][xi])
 					{
 						notFree = true;
 						break;
@@ -775,24 +795,24 @@ namespace Aicup2020
 				int xi = x + i;
 				int yi = y + i;
 
-				if (xi >= 0 && y1 >= 0 && !_cells[y1][xi])
-				{
-					unitPosition = new Vec2Int(xi, y1);
-					return true;
-				}
-				else if (xi >= 0 && y2 >= 0 && !_cells[y2][xi])
+				if (xi >= 0 && y2 >= 0 && !_cells[y2][xi])
 				{
 					unitPosition = new Vec2Int(xi, y2);
-					return true;
-				}
-				else if (x1 >= 0 && !_cells[yi][x1])
-				{
-					unitPosition = new Vec2Int(x1, yi);
 					return true;
 				}
 				else if (x2 >= 0 && !_cells[yi][x2])
 				{
 					unitPosition = new Vec2Int(x2, yi);
+					return true;
+				}
+				else if (xi >= 0 && y1 >= 0 && !_cells[y1][xi])
+				{
+					unitPosition = new Vec2Int(xi, y1);
+					return true;
+				}
+				else if (x1 >= 0 && !_cells[yi][x1])
+				{
+					unitPosition = new Vec2Int(x1, yi);
 					return true;
 				}
 			}
