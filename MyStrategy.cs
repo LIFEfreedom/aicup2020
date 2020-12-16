@@ -123,6 +123,11 @@ namespace Aicup2020
 		private Vec2Int _moveTo = new Vec2Int(76, 4);
 		private int _angle = 0;
 
+		private int _leftNearEnemyCount = 0;
+		private int _rightNearEnemyCount = 0;
+		private int _leftFarEnemyCount = 0;
+		private int _rightFarEnemyCount = 0;
+
 		private const float _buildersPercentage = 0.41f;
 
 		private EntityProperties houseProperties;
@@ -138,8 +143,6 @@ namespace Aicup2020
 
 		private bool onlyBuilders = false;
 		private int turn = 0;
-
-		private readonly SortedDictionary<int, BuildersHold> _buildersPositions = new();
 
 		public MyStrategy()
 		{
@@ -509,7 +512,27 @@ namespace Aicup2020
 					}
 					else
 					{
-						moveAction = new MoveAction(_moveTo, true, true);
+						if(_rightNearEnemyCount > 0 && _rightNearEnemyCount >= _leftNearEnemyCount)
+						{
+							moveAction = new MoveAction(new Vec2Int(78, 2), true, true);
+						}
+						else if (_leftNearEnemyCount > 0)
+						{
+							moveAction = new MoveAction(new Vec2Int(2,78), true, true);
+						}
+						else if (_rightFarEnemyCount > 0 && _rightFarEnemyCount >= _leftFarEnemyCount)
+						{
+							moveAction = new MoveAction(new Vec2Int(78, 2), true, true);
+						}
+						else if (_leftFarEnemyCount > 0)
+						{
+							moveAction = new MoveAction(new Vec2Int(2, 78), true, true);
+						}
+						else
+						{
+							moveAction = new MoveAction(_moveTo, true, true);
+						}
+
 						result.EntityActions[unit.Id] = new EntityAction(moveAction, null, new AttackAction(null, new AutoAttack(sightRange, _emptyEntityTypes)), null);
 					}
 				}
@@ -1002,6 +1025,21 @@ namespace Aicup2020
 							break;
 					}
 
+					if (x <= 40 && y <= 40)
+					{
+						if (x >= y)
+							_rightNearEnemyCount++;
+						else
+							_leftNearEnemyCount++;
+					}
+					else if(x <= 50 && x > 40 && y <= 50 && y > 40)
+					{
+						if (x >= y)
+							_rightFarEnemyCount++;
+						else
+							_leftFarEnemyCount++;
+					}
+
 					if (entity.Position.X <= MyPositionEdge && entity.Position.Y <= MyPositionEdge)
 					{
 						if (entity.Position.Y - entity.Position.X >= 0)
@@ -1046,9 +1084,14 @@ namespace Aicup2020
 					_cells[i][k] = CellType.Free;
 				}
 			}
-		}
 
-		private bool TryGetBuilding(int entityId, out Entity building)
+			_leftNearEnemyCount = 0;
+			_rightNearEnemyCount = 0;
+			_leftFarEnemyCount = 0;
+			_rightFarEnemyCount = 0;
+	}
+
+	private bool TryGetBuilding(int entityId, out Entity building)
 		{
 			building = allBuildings.FirstOrDefault(e => e.Id == entityId);
 
