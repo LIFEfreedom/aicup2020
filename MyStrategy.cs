@@ -3,7 +3,6 @@ using Aicup2020.Model;
 using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
-using System.Diagnostics;
 using System.Linq;
 using System.Text;
 
@@ -63,19 +62,15 @@ namespace Aicup2020
 			}
 
 			public IReadOnlyList<int> Participants => _participants;
-			//private List<int> _participantsTurned;
 
 			public void Add(int entityId)
 			{
 				_participants.Add(entityId);
-				//_participantsTurned.Add(entityId);
-				//_freeBuilders.Remove(entityId);
 			}
 
 			public void Remove(int entityId)
 			{
 				_participants.Remove(entityId);
-				//_participantsTurned.Add(entityId);
 				_freeBuilders.Remove(entityId);
 			}
 		}
@@ -83,8 +78,9 @@ namespace Aicup2020
 		private List<BuilderTask> _builderTasks = new(4);
 		private List<BuilderTask> _newBuilderTasks = new(4);
 		private static readonly SortedDictionary<int, Entity> _freeBuilders = new ();
-		private const int MaxHouseRepairWorkers = 2;
-		private const int MaxRangedBaseRepairWorkers = 20;
+		private int MaxHouseRepairWorkers = 3;
+		private const int MaxRangedBaseRepairWorkers = 10;
+		private const int MaxBaseRapairWorkers = 5;
 
 		private int _lostResources;
 
@@ -114,7 +110,6 @@ namespace Aicup2020
 		private Party _firstAttackParty = new(20, PartyType.Attack, new Vec2Int(20, 20), DefensePosition.None);
 
 		private readonly Dictionary<int, EntityAction> _entityActions = new Dictionary<int, EntityAction>(10);
-		private const int MaxBaseRapairWorkers = 5;
 		private Vec2Int _myBaseCenter = new Vec2Int(5, 5);
 
 		private int _totalFood = 0;
@@ -197,7 +192,7 @@ namespace Aicup2020
 
 			CollectEntities(playerView);
 
-			//Debug.WriteLine(PrintMap());
+			MaxHouseRepairWorkers = builders.Count >= 15 ? 3 : 2;
 
 			int buildersCount = builders.Count;
 
@@ -282,7 +277,8 @@ namespace Aicup2020
 
 			EntityType buildingEntityType = builderBaseProperties.Build.Value.Options[0];
 
-			if (builders.Count <= 60 && (onlyBuilders || needBuilders) && ((lostResources - builderUnitProperties.InitialCost) >= 0))
+			int nearEnemyCount = _leftNearEnemyCount + _rightNearEnemyCount;
+			if ((onlyBuilders || needBuilders) && ((lostResources - builderUnitProperties.InitialCost) >= 0) && (nearEnemyCount == 0 || (nearEnemyCount < (_leftDefenseParty.Count + _rightDefenseParty.Count))))
 			{
 				BuildUnitAction(builderBase, buildingEntityType, builderBaseProperties, in result, ref lostResources);
 			}
@@ -291,14 +287,16 @@ namespace Aicup2020
 		private void ExecuteTasks(ref List<BuilderTask> builderTasks, bool ignoreCheckFreeLocation, in Action result, ref int lostResources)
 		{
 			List<BuilderTask> notCompletedTasks = new(builderTasks.Count);
-			int used = 0;
 			foreach (BuilderTask builderTask in builderTasks)
 			{
 				bool complete = false;
 				bool isBuildTask = builderTask.ActionType == ActionType.Build;
+				Vec2Int builderPosition = default;
+				EntityProperties buildingProperties = builderTask.IsHouse ? houseProperties : rangedBaseProperties;
 
 				if (isBuildTask && !builderTask.BuildAction.HasValue)
 				{
+					builderPosition = builderTask.BuildAction.Value.Position;
 					complete = true;
 					break;
 				}
@@ -309,14 +307,12 @@ namespace Aicup2020
 					break;
 				}
 
-				if(builderTask.CurrentWorkers == 0)
+				if(builderTask.CurrentWorkers < builderTask.MaxWorkers)
 				{
-					for (int i = 0; i < builderTask.MaxWorkers && (_freeBuilders.Count - used) > builderTask.MinFreeWorkers && builderTask.CurrentWorkers < builderTask.MaxWorkers; i++)
-					{
-						int freeBuilderId = _freeBuilders.Keys.Skip(used).First();
-						builderTask.Add(freeBuilderId);
-						used++;
-					}
+					List<int> nearestFreeBuilders = GetNearestFreeBuilders(builderPosition, buildingProperties.Size);
+					int dif = builderTask.MaxWorkers - builderTask.CurrentWorkers;
+					for (int i = 0; i < dif && i < nearestFreeBuilders.Count; i++)
+						builderTask.Add(nearestFreeBuilders[i]);
 				}
 
 				List<int> backup = new(builderTask.Participants.Count);
@@ -366,8 +362,6 @@ namespace Aicup2020
 						_freeBuilders.Remove(builderId);
 						backup.Add(builderId);
 					}
-					//else
-						//backup.Add(builderId);
 				}
 
 				if (!complete)
@@ -377,7 +371,6 @@ namespace Aicup2020
 					if (isBuildTask)
 					{
 						BuildAction buildAction = builderTask.BuildAction.Value;
-						EntityProperties buildingProperties = GetEntityProperties(buildAction.EntityType);
 						lostResources -= buildingProperties.InitialCost;
 						LockBuildingPosition(buildAction.Position, buildingProperties.Size);
 					}
@@ -387,16 +380,6 @@ namespace Aicup2020
 			}
 
 			builderTasks = notCompletedTasks;
-		}
-
-		private void FillBuilderTask(ref BuilderTask builderTask, ref int used)
-		{
-			for (int i = 0; i < builderTask.MaxWorkers && (_freeBuilders.Count - used) > builderTask.MinFreeWorkers && builderTask.CurrentWorkers < builderTask.MaxWorkers; i++)
-			{
-				int freeBuilderId = _freeBuilders.Keys.First();
-				builderTask.Add(freeBuilderId);
-				used++;
-			}
 		}
 
 		private bool BuilderCheckThreats(Entity builder, in Action result)
@@ -588,35 +571,38 @@ namespace Aicup2020
 
 		}
 
+		private List<int> GetNearestFreeBuilders(Vec2Int buildingPosition, int size)
+		{
+			int mid = size / 2 + 1;
+			Vec2Int buildingCenterPosition = new(buildingPosition.X + mid, buildingPosition.Y + mid);
+			return _freeBuilders.OrderBy(q => FindDistance(buildingCenterPosition, q.Value.Position)).Select(q=>q.Key).ToList();
+		}
+
 		private void FindNewBuilderTasks(ref int lostResources)
 		{
-			int used = 0;
 			foreach(Entity rangedBase in rangedBases)
 			{
-				if(rangedBase.Health < rangedBaseProperties.MaxHealth)
+				if(rangedBase.Active && rangedBase.Health < rangedBaseProperties.MaxHealth && !_newBuilderTasks.Where(q=>q.RepairAction.HasValue && q.RepairAction.Value.Target == rangedBase.Id).Any())
 				{
 					BuilderTask builderTask = new BuilderTask(MaxBaseRapairWorkers, ActionType.Repair, new RepairAction(rangedBase.Id), null, EntityType.RangedBase, 10);
-					FillBuilderTask(ref builderTask, ref used);
 					_newBuilderTasks.Add(builderTask);
 				}
 			}
 
 			foreach (Entity meleeBase in rangedBases)
 			{
-				if (meleeBase.Health < meleeBaseProperties.MaxHealth)
+				if (meleeBase.Active && meleeBase.Health < meleeBaseProperties.MaxHealth && !_newBuilderTasks.Where(q => q.RepairAction.HasValue && q.RepairAction.Value.Target == meleeBase.Id).Any())
 				{
 					BuilderTask builderTask = new BuilderTask(MaxBaseRapairWorkers, ActionType.Repair, new RepairAction(meleeBase.Id), null, EntityType.MeleeBase, 10);
-					FillBuilderTask(ref builderTask, ref used);
 					_newBuilderTasks.Add(builderTask);
 				}
 			}
 
 			foreach (Entity builderBase in builderBases)
 			{
-				if (builderBase.Health < builderBaseProperties.MaxHealth)
+				if (builderBase.Active && builderBase.Health < builderBaseProperties.MaxHealth && !_newBuilderTasks.Where(q => q.RepairAction.HasValue && q.RepairAction.Value.Target == builderBase.Id).Any())
 				{
 					BuilderTask builderTask = new BuilderTask(MaxBaseRapairWorkers, ActionType.Repair, new RepairAction(builderBase.Id), null, EntityType.BuilderBase, 10);
-					FillBuilderTask(ref builderTask, ref used);
 					_newBuilderTasks.Add(builderTask);
 				}
 			}
@@ -630,9 +616,7 @@ namespace Aicup2020
 				&& TryGetFreeLocation(rangedBaseProperties.Size, out Vec2Int buildingPositon, out Vec2Int moveToBuilderPosition, true))
 			{
 				lostResources -= rangedBaseProperties.InitialCost;
-				BuilderTask builderTask = new BuilderTask(MaxRangedBaseRepairWorkers, ActionType.Build, null, new BuildAction(EntityType.RangedBase, buildingPositon), EntityType.RangedBase, 10);
-
-				FillBuilderTask(ref builderTask, ref used);
+				BuilderTask builderTask = new BuilderTask(1, ActionType.Build, null, new BuildAction(EntityType.RangedBase, buildingPositon), EntityType.RangedBase, 10);
 
 				_newBuilderTasks.Add(builderTask);
 				LockBuildingPosition(buildingPositon, rangedBaseProperties.Size);
@@ -643,17 +627,22 @@ namespace Aicup2020
 				int foodDeference = _totalFood - _consumedFood;
 				int newHousesTasksCount = _newBuilderTasks.Where(q => q.IsHouse).Count();
 				int totalHousesTasksCount = housesTasksCount + newHousesTasksCount;
-				
-				bool needNewHouse = foodDeference < 10 && totalHousesTasksCount < 2 && (rangedBases.Count > 0 || rangedBasesTasksCount > 0 || _totalFood < 20);
-				bool needMoreHouse = _totalFood <= 60 && foodDeference < 15 && lostResources > 200 && totalHousesTasksCount < 4 && (rangedBases.Count > 0 || rangedBasesTasksCount > 0 || _totalFood < 20);
 
-				if ((needNewHouse || needMoreHouse) 
+				bool firstState = rangedBases.Count == 0 && rangedBasesTasksCount == 0 && _totalFood <= 25;
+				bool secondStage = (rangedBases.Count > 0 || rangedBasesTasksCount > 0) && _totalFood <= 25;
+				bool thirdStage = (rangedBases.Count > 0 || rangedBasesTasksCount > 0) && _totalFood >= 25;
+
+				bool needHouseWhenFirstStage = _totalFood + totalHousesTasksCount * houseProperties.PopulationProvide < 20;
+				bool needHouseWhenSecondStage = totalHousesTasksCount < 2;
+				bool needHouseWhenThirdStage = foodDeference < 10 && totalHousesTasksCount < 2;
+				bool needAdditionalHouseWhenThirdStage = foodDeference < 15 && (totalHousesTasksCount < 3 && lostResources >= 200);
+
+				if ( ((firstState && needHouseWhenFirstStage) || (secondStage && needHouseWhenSecondStage) || (thirdStage && (needHouseWhenThirdStage || needAdditionalHouseWhenThirdStage)))
 					&& lostResources >= houseProperties.InitialCost 
 					&& TryGetFreeLocation(houseProperties.Size, out Vec2Int housePosition, out moveToBuilderPosition))
 				{
 					lostResources -= houseProperties.InitialCost;
-					BuilderTask builderTask = new BuilderTask(MaxHouseRepairWorkers, ActionType.Build, null, new BuildAction(EntityType.House, housePosition), EntityType.House, 0);
-					FillBuilderTask(ref builderTask, ref used);
+					BuilderTask builderTask = new BuilderTask(1, ActionType.Build, null, new BuildAction(EntityType.House, housePosition), EntityType.House, 0);
 					_newBuilderTasks.Add(builderTask);
 					LockBuildingPosition(housePosition, rangedBaseProperties.Size);
 					continue;
@@ -812,9 +801,9 @@ namespace Aicup2020
 			int y1 = y - 1;
 			int y2 = y + size;
 
-			if (x < 2 || y < 2 || ignoreBuffer)
+			if (x < 3 || y < 3 || ignoreBuffer)
 			{
-				if(x < 2 && y < 6)
+				if(x < 2 && y < 7)
 				{
 					for(int xi = x - 1; xi >= 0; xi--)
 					{
@@ -827,7 +816,7 @@ namespace Aicup2020
 						}
 					}
 				}
-				else if(y < 2 && x < 6)
+				else if(y < 2 && x < 7)
 				{
 					for (int yi = y - 1; yi >= 0; yi--)
 					{
@@ -863,19 +852,26 @@ namespace Aicup2020
 
 		private bool TryGetFreeLocation(int size, out Vec2Int buildingPosition, out Vec2Int builderPosition, bool ignoreBuffer = false)
 		{
-			for (int num = 1; num < 40; num++)
+			for (int num = 1; num < 50; num++)
 			{
-				for (int x = 0; x < num; x++)
+				for(int i = 0; i < num; i++)
 				{
-					for (int y = 0; y < num; y++)
+					int prevNum = num - 1;
+					if (CheckFreeLocation(i, prevNum, size, ignoreBuffer))
 					{
-						if (CheckFreeLocation(x, y, size, ignoreBuffer))
+						buildingPosition = new Vec2Int(i, prevNum);
+						if (TryGetFreeUnitLocation(buildingPosition, size, out builderPosition))
 						{
-							buildingPosition = new Vec2Int(x, y);
-							if (TryGetFreeUnitLocation(buildingPosition, size, out builderPosition))
-							{
-								return true;
-							}
+							return true;
+						}
+					}
+
+					if (CheckFreeLocation(prevNum, i, size, ignoreBuffer))
+					{
+						buildingPosition = new Vec2Int(prevNum, i);
+						if (TryGetFreeUnitLocation(buildingPosition, size, out builderPosition))
+						{
+							return true;
 						}
 					}
 				}
