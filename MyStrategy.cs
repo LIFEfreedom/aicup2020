@@ -590,9 +590,39 @@ namespace Aicup2020
 
 		private void FindNewBuilderTasks(ref int lostResources)
 		{
+			int used = 0;
+			foreach(Entity rangedBase in rangedBases)
+			{
+				if(rangedBase.Health < rangedBaseProperties.MaxHealth)
+				{
+					BuilderTask builderTask = new BuilderTask(5, ActionType.Repair, new RepairAction(rangedBase.Id), null, EntityType.RangedBase, 10);
+					FillBuilderTask(ref builderTask, ref used);
+					_newBuilderTasks.Add(builderTask);
+				}
+			}
+
+			foreach (Entity meleeBase in rangedBases)
+			{
+				if (meleeBase.Health < meleeBaseProperties.MaxHealth)
+				{
+					BuilderTask builderTask = new BuilderTask(5, ActionType.Repair, new RepairAction(meleeBase.Id), null, EntityType.MeleeBase, 10);
+					FillBuilderTask(ref builderTask, ref used);
+					_newBuilderTasks.Add(builderTask);
+				}
+			}
+
+			foreach (Entity builderBase in builderBases)
+			{
+				if (builderBase.Health < meleeBaseProperties.MaxHealth)
+				{
+					BuilderTask builderTask = new BuilderTask(5, ActionType.Repair, new RepairAction(builderBase.Id), null, EntityType.BuilderBase, 10);
+					FillBuilderTask(ref builderTask, ref used);
+					_newBuilderTasks.Add(builderTask);
+				}
+			}
+
 			int housesTasksCount = _builderTasks.Where(q => q.IsHouse).Count();
 			int rangedBasesTasksCount = _builderTasks.Count - housesTasksCount;
-			int used = 0;
 
 			if (rangedBases.Count == 0
 				&& rangedBasesTasksCount == 0
