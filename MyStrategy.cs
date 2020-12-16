@@ -931,33 +931,33 @@ namespace Aicup2020
 
 			return sb.ToString();
 		}
-	}
 
-	public struct EntityTask
-	{
-		public int EntityId;
-
-		public bool BuildingIsBuild;
-
-		public bool Processed;
-
-		public EntityAction EntityAction;
-
-		public ActionType ActionType;
-
-		public EntityTask(int entityId, bool buildingIsBuild, EntityAction entityAction, ActionType actionType)
+		private struct EntityTask
 		{
-			EntityId = entityId;
-			BuildingIsBuild = buildingIsBuild;
-			Processed = true;
-			EntityAction = entityAction;
-			ActionType = actionType;
-		}
-	}
+			public int EntityId;
 
-	public enum ActionType : byte
-	{
-		Build,
-		Repair
+			public bool BuildingIsBuild;
+
+			public bool Processed;
+
+			public EntityAction EntityAction;
+
+			public ActionType ActionType;
+
+			public EntityTask(int entityId, bool buildingIsBuild, EntityAction entityAction, ActionType actionType)
+			{
+				EntityId = entityId;
+				BuildingIsBuild = buildingIsBuild;
+				Processed = true;
+				EntityAction = entityAction;
+				ActionType = actionType;
+			}
+		}
+
+		private enum ActionType : byte
+		{
+			Build,
+			Repair
+		}
 	}
 }
