@@ -109,12 +109,12 @@ namespace Aicup2020
 		private const double enemyRadiusDetection = 6.5d;
 		private List<Entity> _leftEnemiesInMyBase = new(2);
 		private List<Entity> _rightEnemiesInMyBase = new(2);
-		private Party _leftDefenseParty = new(8, PartyType.Defense, new Vec2Int(9, 20), DefensePosition.Left);
-		private Party _rightDefenseParty = new(8, PartyType.Defense, new Vec2Int(20, 9), DefensePosition.Right);
+		private Party _leftDefenseParty = new(7, PartyType.Defense, new Vec2Int(9, 20), DefensePosition.Left);
+		private Party _rightDefenseParty = new(7, PartyType.Defense, new Vec2Int(20, 9), DefensePosition.Right);
 		private Party _firstAttackParty = new(20, PartyType.Attack, new Vec2Int(20, 20), DefensePosition.None);
 
 		private readonly Dictionary<int, EntityAction> _entityActions = new Dictionary<int, EntityAction>(10);
-
+		private const int MaxBaseRapairWorkers = 5;
 		private Vec2Int _myBaseCenter = new Vec2Int(5, 5);
 
 		private int _totalFood = 0;
@@ -595,7 +595,7 @@ namespace Aicup2020
 			{
 				if(rangedBase.Health < rangedBaseProperties.MaxHealth)
 				{
-					BuilderTask builderTask = new BuilderTask(5, ActionType.Repair, new RepairAction(rangedBase.Id), null, EntityType.RangedBase, 10);
+					BuilderTask builderTask = new BuilderTask(MaxBaseRapairWorkers, ActionType.Repair, new RepairAction(rangedBase.Id), null, EntityType.RangedBase, 10);
 					FillBuilderTask(ref builderTask, ref used);
 					_newBuilderTasks.Add(builderTask);
 				}
@@ -605,7 +605,7 @@ namespace Aicup2020
 			{
 				if (meleeBase.Health < meleeBaseProperties.MaxHealth)
 				{
-					BuilderTask builderTask = new BuilderTask(5, ActionType.Repair, new RepairAction(meleeBase.Id), null, EntityType.MeleeBase, 10);
+					BuilderTask builderTask = new BuilderTask(MaxBaseRapairWorkers, ActionType.Repair, new RepairAction(meleeBase.Id), null, EntityType.MeleeBase, 10);
 					FillBuilderTask(ref builderTask, ref used);
 					_newBuilderTasks.Add(builderTask);
 				}
@@ -613,9 +613,9 @@ namespace Aicup2020
 
 			foreach (Entity builderBase in builderBases)
 			{
-				if (builderBase.Health < meleeBaseProperties.MaxHealth)
+				if (builderBase.Health < builderBaseProperties.MaxHealth)
 				{
-					BuilderTask builderTask = new BuilderTask(5, ActionType.Repair, new RepairAction(builderBase.Id), null, EntityType.BuilderBase, 10);
+					BuilderTask builderTask = new BuilderTask(MaxBaseRapairWorkers, ActionType.Repair, new RepairAction(builderBase.Id), null, EntityType.BuilderBase, 10);
 					FillBuilderTask(ref builderTask, ref used);
 					_newBuilderTasks.Add(builderTask);
 				}
@@ -1121,7 +1121,7 @@ namespace Aicup2020
 			_rightFarEnemyCount = 0;
 	}
 
-	private bool TryGetBuilding(int entityId, out Entity building)
+		private bool TryGetBuilding(int entityId, out Entity building)
 		{
 			building = allBuildings.FirstOrDefault(e => e.Id == entityId);
 
