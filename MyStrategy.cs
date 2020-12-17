@@ -117,13 +117,14 @@ namespace Aicup2020
 
 		private Vec2Int _moveTo = new Vec2Int(76, 4);
 		private int _angle = 0;
+		private int Stage = 0;
 
 		private int _leftNearEnemyCount = 0;
 		private int _rightNearEnemyCount = 0;
 		private int _leftFarEnemyCount = 0;
 		private int _rightFarEnemyCount = 0;
 
-		private const float _buildersPercentage = 0.41f;
+		private const float _buildersPercentage = 0.30f;
 
 		private EntityProperties houseProperties;
 		private EntityProperties builderBaseProperties;
@@ -136,7 +137,6 @@ namespace Aicup2020
 		private EntityProperties turretProperties;
 		private EntityProperties resourceProperties;
 
-		private bool onlyBuilders = false;
 		private int turn = 0;
 
 		public MyStrategy()
@@ -202,12 +202,18 @@ namespace Aicup2020
 						+ meleeBases.Where(q => q.Active).Count() * meleeBaseProperties.PopulationProvide
 						+ houses.Where(q => q.Active).Count() * houseProperties.PopulationProvide;
 
-			onlyBuilders = rangedBases.Count == 0 && buildersCount <= 15 && _totalFood <= 20;
-
-			//IEnumerable<EntityAction> buildingTasks = entityTasks.Values.Where(q => q.ActionType == ActionType.Build).Select(q => q.EntityAction);
 			int lostResources = _lostResources;
 
 			ExecuteTasks(ref _builderTasks, false, in result, ref lostResources);
+
+			int rangedBasesTasksCount = _builderTasks.Where(q => !q.IsHouse).Count(); ;
+
+			if (rangedBases.Count == 0 && rangedBasesTasksCount == 0 && _totalFood <= 25)
+				Stage = 1;
+			else if ((rangedBases.Count > 0 || rangedBasesTasksCount > 0) && _totalFood <= 25)
+				Stage = 2;
+			else if ((rangedBases.Count > 0 || rangedBasesTasksCount > 0) && _totalFood >= 25)
+				Stage = 3;
 
 			FindNewBuilderTasks(ref lostResources);
 
@@ -252,7 +258,7 @@ namespace Aicup2020
 
 			EntityType buildingEntityType = meleeBaseProperties.Build.Value.Options[0];
 
-			if (!onlyBuilders && ((lostResources - meleeUnitProperties.InitialCost) >= 0))
+			if (Stage == 3 && ((lostResources - meleeUnitProperties.InitialCost) >= 0))
 			{
 				BuildUnitAction(meleeBase, buildingEntityType, meleeBaseProperties, in result, ref lostResources);
 			}
@@ -262,7 +268,7 @@ namespace Aicup2020
 		{
 			EntityType buildingEntityType = rangedBaseProperties.Build.Value.Options[0];
 
-			if (!onlyBuilders && ((lostResources - rangedUnitProperties.InitialCost) >= 0))
+			if (Stage == 3 && ((lostResources - rangedUnitProperties.InitialCost) >= 0))
 			{
 				BuildUnitAction(rangedBase, buildingEntityType, rangedBaseProperties, in result, ref lostResources);
 			}
@@ -271,14 +277,17 @@ namespace Aicup2020
 		private void BuilderBaseLogic(Entity builderBase, ref Action result, ref int lostResources)
 		{
 			bool rangedBasesExists = rangedBases.Where(q => q.Active).Any();
-			bool needBuilders = (builders.Count < 10 && _lostResources < 200)
-									|| (rangedBasesExists && ((float)builders.Count / _totalFood) <= _buildersPercentage)
-									|| (!rangedBasesExists && builders.Count < 20);
+
+			bool needBuildersWhenFirstStage = builders.Count < 25;
+			bool needBuildersWhenSecondStage = lostResources >= 100;
+			bool needBuildersWhenThirdStage = ((float)(builders.Count - 25) / _totalFood) <= _buildersPercentage;
 
 			EntityType buildingEntityType = builderBaseProperties.Build.Value.Options[0];
 
 			int nearEnemyCount = _leftNearEnemyCount + _rightNearEnemyCount;
-			if ((onlyBuilders || needBuilders) && ((lostResources - builderUnitProperties.InitialCost) >= 0) && (nearEnemyCount == 0 || (nearEnemyCount < (_leftDefenseParty.Count + _rightDefenseParty.Count))))
+			if (((Stage == 1 && needBuildersWhenFirstStage) || (Stage == 2 && needBuildersWhenSecondStage) || (Stage == 3 && needBuildersWhenThirdStage))
+				&& ((lostResources - builderUnitProperties.InitialCost) >= 0)
+				&& (nearEnemyCount == 0 || (nearEnemyCount < (_leftDefenseParty.Count + _rightDefenseParty.Count))))
 			{
 				BuildUnitAction(builderBase, buildingEntityType, builderBaseProperties, in result, ref lostResources);
 			}
@@ -628,16 +637,12 @@ namespace Aicup2020
 				int newHousesTasksCount = _newBuilderTasks.Where(q => q.IsHouse).Count();
 				int totalHousesTasksCount = housesTasksCount + newHousesTasksCount;
 
-				bool firstState = rangedBases.Count == 0 && rangedBasesTasksCount == 0 && _totalFood <= 25;
-				bool secondStage = (rangedBases.Count > 0 || rangedBasesTasksCount > 0) && _totalFood <= 25;
-				bool thirdStage = (rangedBases.Count > 0 || rangedBasesTasksCount > 0) && _totalFood >= 25;
-
-				bool needHouseWhenFirstStage = _totalFood + totalHousesTasksCount * houseProperties.PopulationProvide < 20;
+				bool needHouseWhenFirstStage = _totalFood + totalHousesTasksCount * houseProperties.PopulationProvide <= 20;
 				bool needHouseWhenSecondStage = totalHousesTasksCount < 2;
-				bool needHouseWhenThirdStage = foodDeference < 10 && totalHousesTasksCount < 2;
-				bool needAdditionalHouseWhenThirdStage = foodDeference < 15 && (totalHousesTasksCount < 3 && lostResources >= 200);
+				bool needHouseWhenThirdStage = foodDeference < 10 && totalHousesTasksCount < 3;
+				bool needAdditionalHouseWhenThirdStage = foodDeference < 15 && (totalHousesTasksCount < 4 && lostResources >= 200);
 
-				if ( ((firstState && needHouseWhenFirstStage) || (secondStage && needHouseWhenSecondStage) || (thirdStage && (needHouseWhenThirdStage || needAdditionalHouseWhenThirdStage)))
+				if ( ((Stage == 1 && needHouseWhenFirstStage) || (Stage == 2 && needHouseWhenSecondStage) || (Stage == 3 && (needHouseWhenThirdStage || needAdditionalHouseWhenThirdStage)))
 					&& lostResources >= houseProperties.InitialCost 
 					&& TryGetFreeLocation(houseProperties.Size, out Vec2Int housePosition, out moveToBuilderPosition))
 				{
@@ -727,7 +732,7 @@ namespace Aicup2020
 			{
 				if(CheckBuilderOnBuildingEdge(buildingPosition, builderPosition, buildingProperties.Size))
 				{
-					result.EntityActions[builder.Id] = new EntityAction(new MoveAction(builderPosition, true, false), buildAction, null, null);
+					result.EntityActions[builder.Id] = new EntityAction(null, buildAction, null, null);
 				}
 				else
 				{
@@ -838,10 +843,10 @@ namespace Aicup2020
 				int xi = x + i;
 				int yi = y + i;
 
-				if (!(_cells[y2][xi] is CellType.Free or CellType.Builder or CellType.Army)
-					|| !(_cells[y1][xi] is CellType.Free or CellType.Builder or CellType.Army)
-					|| !(_cells[yi][x2] is CellType.Free or CellType.Builder or CellType.Army)
-					|| !(_cells[yi][x1] is CellType.Free or CellType.Builder or CellType.Army))
+				if (!(_cells[y2][xi] is CellType.Free /*or CellType.Builder or CellType.Army*/)
+					|| !(_cells[y1][xi] is CellType.Free /*or CellType.Builder or CellType.Army*/)
+					|| !(_cells[yi][x2] is CellType.Free /*or CellType.Builder or CellType.Army*/)
+					|| !(_cells[yi][x1] is CellType.Free /*or CellType.Builder or CellType.Army*/))
 				{
 					return false;
 				}
