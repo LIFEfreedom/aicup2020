@@ -806,7 +806,7 @@ namespace Aicup2020
 			int y1 = y - 1;
 			int y2 = y + size;
 
-			if (x < 3 || y < 3 || ignoreBuffer)
+			if (x < 2 || y < 2 || ignoreBuffer)
 			{
 				if(x < 2 && y < 7)
 				{
