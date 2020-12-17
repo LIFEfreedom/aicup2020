@@ -843,10 +843,10 @@ namespace Aicup2020
 				int xi = x + i;
 				int yi = y + i;
 
-				if (!(_cells[y2][xi] is CellType.Free /*or CellType.Builder or CellType.Army*/)
-					|| !(_cells[y1][xi] is CellType.Free /*or CellType.Builder or CellType.Army*/)
-					|| !(_cells[yi][x2] is CellType.Free /*or CellType.Builder or CellType.Army*/)
-					|| !(_cells[yi][x1] is CellType.Free /*or CellType.Builder or CellType.Army*/))
+				if (!(_cells[y2][xi] is CellType.Free or CellType.Builder or CellType.Army)
+					|| !(_cells[y1][xi] is CellType.Free or CellType.Builder or CellType.Army)
+					|| !(_cells[yi][x2] is CellType.Free or CellType.Builder or CellType.Army)
+					|| !(_cells[yi][x1] is CellType.Free or CellType.Builder or CellType.Army))
 				{
 					return false;
 				}
@@ -897,29 +897,43 @@ namespace Aicup2020
 			int y1 = y - 1;
 			int y2 = y + size;
 
-			for (int i = size - 1; i >= 0; i--)
+			for(int i = 0; i < size; i++)
 			{
 				int xi = x + i;
-				int yi = y + i;
+				if (_cells[y2][xi] is CellType.Free)
+				{
+					unitPosition = new Vec2Int(xi, y2);
+					return true;
+				}
+			}
 
+			for (int i = 0; i < size; i++)
+			{
+				int yi = y + i;
 				if (_cells[yi][x2] is CellType.Free)
 				{
 					unitPosition = new Vec2Int(x2, yi);
 					return true;
 				}
-				else if (_cells[y2][xi] is CellType.Free)
-				{
-					unitPosition = new Vec2Int(xi, y2);
-					return true;
-				}
-				else if (y1 >= 0 && _cells[y1][xi] is CellType.Free)
-				{
-					unitPosition = new Vec2Int(xi, y1);
-					return true;
-				}
-				else if (x1 >= 0 && _cells[yi][x1] is CellType.Free)
+
+			}
+
+			for (int i = 0; x1 >=0 && i < size; i++)
+			{
+				int yi = y + i;
+				if (_cells[yi][x1] is CellType.Free)
 				{
 					unitPosition = new Vec2Int(x1, yi);
+					return true;
+				}
+			}
+
+			for (int i = 0; y1 >= 0 && i < size; i++)
+			{
+				int xi = x + i;
+				if (_cells[y1][xi] is CellType.Free)
+				{
+					unitPosition = new Vec2Int(xi, y1);
 					return true;
 				}
 			}
