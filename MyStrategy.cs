@@ -107,9 +107,9 @@ namespace Aicup2020
 		private const double enemyRadiusDetection = 7.5d;
 		private List<Entity> _leftEnemiesInMyBase = new(2);
 		private List<Entity> _rightEnemiesInMyBase = new(2);
-		private Party _leftDefenseParty = new(7, PartyType.Defense, new Vec2Int(10, 25), DefensePosition.Left);
-		private Party _rightDefenseParty = new(7, PartyType.Defense, new Vec2Int(25, 10), DefensePosition.Right);
-		private Party _firstAttackParty = new(15, PartyType.Attack, new Vec2Int(20, 20), DefensePosition.None);
+		//private Party _leftDefenseParty = new(7, PartyType.Defense, new Vec2Int(10, 25), DefensePosition.Left);
+		//private Party _rightDefenseParty = new(7, PartyType.Defense, new Vec2Int(25, 10), DefensePosition.Right);
+		private Party _firstAttackParty = new(5, PartyType.Attack, new Vec2Int(20, 20), DefensePosition.None);
 
 		private readonly Dictionary<int, EntityAction> _entityActions = new Dictionary<int, EntityAction>(10);
 		private Vec2Int _myBaseCenter = new Vec2Int(5, 5);
@@ -241,7 +241,7 @@ namespace Aicup2020
 				}
 				else
 				{
-					result.EntityActions[builder.Id] = new EntityAction(null, null, new AttackAction(null, new AutoAttack(60, _resourceEntityTypes)), null);
+					result.EntityActions[builder.Id] = new EntityAction(null, null, new AttackAction(null, new AutoAttack(120, _resourceEntityTypes)), null);
 				}
 			}
 
@@ -249,7 +249,7 @@ namespace Aicup2020
 
 			builderBases.ForEach(builderBase => BuilderBaseLogic(builderBase, ref result, ref lostResources));
 
-			meleeBases.ForEach(meleeBase => MeleeBaseLogic(playerView, meleeBase, ref result, ref lostResources));
+			meleeBases.ForEach(meleeBase => MeleeBaseLogic(meleeBase, ref result, ref lostResources));
 
 			rangedUnits.ForEach(rangedUnit => BattleUnitLogic(rangedUnit, in result));
 
@@ -257,14 +257,14 @@ namespace Aicup2020
 
 			turrets.ForEach(turret => result.EntityActions[turret.Id] = new EntityAction(null, null, new AttackAction(null, new AutoAttack(turretProperties.SightRange, _emptyEntityTypes)), null));
 
-			_leftDefenseParty.Clear();
-			_rightDefenseParty.Clear();
+			//_leftDefenseParty.Clear();
+			//_rightDefenseParty.Clear();
 			_firstAttackParty.Clear();
 
 			return result;
 		}
 
-		private void MeleeBaseLogic(PlayerView playerView, Entity meleeBase, ref Action result, ref int lostResources)
+		private void MeleeBaseLogic(Entity meleeBase, ref Action result, ref int lostResources)
 		{
 			if (rangedBases.Count > 0)
 				return;
@@ -275,6 +275,10 @@ namespace Aicup2020
 			{
 				BuildUnitAction(meleeBase, buildingEntityType, meleeBaseProperties, in result, ref lostResources);
 			}
+			else
+			{
+				result.EntityActions[meleeBase.Id] = new EntityAction(null, null, null, null);
+			}
 		}
 
 		private void RangedBaseLogic(Entity rangedBase, ref Action result, ref int lostResources)
@@ -284,6 +288,10 @@ namespace Aicup2020
 			if (Stage == 3 && ((lostResources - rangedUnitProperties.InitialCost) >= 0))
 			{
 				BuildUnitAction(rangedBase, buildingEntityType, rangedBaseProperties, in result, ref lostResources);
+			}
+			else
+			{
+				result.EntityActions[rangedBase.Id] = new EntityAction(null, null, null, null);
 			}
 		}
 
@@ -300,9 +308,13 @@ namespace Aicup2020
 			int nearEnemyCount = _leftNearEnemyCount + _rightNearEnemyCount;
 			if (((Stage == 1 && needBuildersWhenFirstStage) || (Stage == 2 && needBuildersWhenSecondStage) || (Stage == 3 && needBuildersWhenThirdStage))
 				&& ((lostResources - builderUnitProperties.InitialCost) >= 0)
-				&& (nearEnemyCount == 0 || (nearEnemyCount < (_leftDefenseParty.Count + _rightDefenseParty.Count))))
+				&& (nearEnemyCount == 0 /*|| (nearEnemyCount < (_leftDefenseParty.Count + _rightDefenseParty.Count))*/))
 			{
 				BuildUnitAction(builderBase, buildingEntityType, builderBaseProperties, in result, ref lostResources);
+			}
+			else
+			{
+				result.EntityActions[builderBase.Id] = new EntityAction(null, null, null, null);
 			}
 		}
 
@@ -470,57 +482,60 @@ namespace Aicup2020
 
 			if (TryGetParty(unit.Id, out Party party))
 			{
-				if (party.PartyType == PartyType.Defense)
-				{
-					party.Turn(unit.Id);
-					if (party.DefensePosition == DefensePosition.Left)
-					{
-						LeftDefensePartyLogic(ref party, entityProperties.SightRange, in result);
-						return;
-					}
-
-					if (party.DefensePosition == DefensePosition.Right)
-					{
-						RightDefensePartyLogic(ref party, entityProperties.SightRange, in result);
-						return;
-					}
-
-					result.EntityActions[unit.Id] = new EntityAction(new MoveAction(party.MoveTo, false, false), null, new AttackAction(null, new AutoAttack(entityProperties.SightRange, _emptyEntityTypes)), null);
-					return;
-				}
-				else if (party.PartyType == PartyType.Attack)
-				{
-					if(_leftDefenseParty.Count < _leftDefenseParty.Capacity)
-					{
-						_leftDefenseParty.Add(unit.Id);
-						LeftDefensePartyLogic(ref _leftDefenseParty, entityProperties.SightRange, in result);
-						return;
-					}
-
-					if (_rightDefenseParty.Count < _rightDefenseParty.Capacity)
-					{
-						_leftDefenseParty.Add(unit.Id);
-						LeftDefensePartyLogic(ref _rightDefenseParty, entityProperties.SightRange, in result);
-						return;
-					}
-
-					FirstAttackPartyLogic(entityProperties.SightRange, in result);
-					return;
-				}
-			}
-
-			if (_leftDefenseParty.Count < _leftDefenseParty.Capacity)
-			{
-				_leftDefenseParty.Add(unit.Id);
-				LeftDefensePartyLogic(ref party, entityProperties.SightRange, in result);
+				FirstAttackPartyLogic(entityProperties.SightRange, in result);
 				return;
+
+				//if (party.PartyType == PartyType.Defense)
+				//{
+				//	party.Turn(unit.Id);
+				//	if (party.DefensePosition == DefensePosition.Left)
+				//	{
+				//		LeftDefensePartyLogic(ref party, entityProperties.SightRange, in result);
+				//		return;
+				//	}
+
+				//	if (party.DefensePosition == DefensePosition.Right)
+				//	{
+				//		RightDefensePartyLogic(ref party, entityProperties.SightRange, in result);
+				//		return;
+				//	}
+
+				//	result.EntityActions[unit.Id] = new EntityAction(new MoveAction(party.MoveTo, false, false), null, new AttackAction(null, new AutoAttack(entityProperties.SightRange, _emptyEntityTypes)), null);
+				//	return;
+				//}
+				//else if (party.PartyType == PartyType.Attack)
+				//{
+				//	if (_leftDefenseParty.Count < _leftDefenseParty.Capacity)
+				//	{
+				//		_leftDefenseParty.Add(unit.Id);
+				//		LeftDefensePartyLogic(ref _leftDefenseParty, entityProperties.SightRange, in result);
+				//		return;
+				//	}
+
+				//	if (_rightDefenseParty.Count < _rightDefenseParty.Capacity)
+				//	{
+				//		_leftDefenseParty.Add(unit.Id);
+				//		LeftDefensePartyLogic(ref _rightDefenseParty, entityProperties.SightRange, in result);
+				//		return;
+				//	}
+
+				//	FirstAttackPartyLogic(entityProperties.SightRange, in result);
+				//	return;
+				//}
 			}
-			else if (_rightDefenseParty.Count < _rightDefenseParty.Capacity)
-			{
-				_rightDefenseParty.Add(unit.Id);
-				RightDefensePartyLogic(ref party, entityProperties.SightRange, in result);
-				return;
-			}
+
+			//if (_leftDefenseParty.Count < _leftDefenseParty.Capacity)
+			//{
+			//	_leftDefenseParty.Add(unit.Id);
+			//	LeftDefensePartyLogic(ref party, entityProperties.SightRange, in result);
+			//	return;
+			//}
+			//else if (_rightDefenseParty.Count < _rightDefenseParty.Capacity)
+			//{
+			//	_rightDefenseParty.Add(unit.Id);
+			//	RightDefensePartyLogic(ref party, entityProperties.SightRange, in result);
+			//	return;
+			//}
 
 			bool prevAttackState = _firstAttackParty.IsAttacking;
 			_firstAttackParty.Add(unit.Id);
@@ -534,7 +549,7 @@ namespace Aicup2020
 				}
 			}
 
-			result.EntityActions[unit.Id] = new EntityAction(new MoveAction(_firstAttackParty.MoveTo, true, false), null, new AttackAction(null, new AutoAttack(entityProperties.SightRange, _emptyEntityTypes)), null);
+			//result.EntityActions[unit.Id] = new EntityAction(new MoveAction(_firstAttackParty.MoveTo, true, false), null, new AttackAction(null, new AutoAttack(entityProperties.SightRange, _emptyEntityTypes)), null);
 
 			void FirstAttackPartyLogic(int sightRange, in Action result) => FirstAttackPartyLogicLast(sightRange, in result, out MoveAction _);
 
@@ -1374,17 +1389,18 @@ namespace Aicup2020
 
 		private bool TryGetParty(int entityid, out Party party)
 		{
-			if (_leftDefenseParty.Contains(entityid))
-			{
-				party = _leftDefenseParty;
-				return true;
-			}
-			else if (_rightDefenseParty.Contains(entityid))
-			{
-				party = _rightDefenseParty;
-				return true;
-			}
-			else if (_firstAttackParty.Contains(entityid))
+			//if (_leftDefenseParty.Contains(entityid))
+			//{
+			//	party = _leftDefenseParty;
+			//	return true;
+			//}
+			//else if (_rightDefenseParty.Contains(entityid))
+			//{
+			//	party = _rightDefenseParty;
+			//	return true;
+			//}
+			//else if (_firstAttackParty.Contains(entityid))
+			if (_firstAttackParty.Contains(entityid))
 			{
 				party = _firstAttackParty;
 				return true;
@@ -1502,14 +1518,8 @@ namespace Aicup2020
 
 			public void Add(int entityId)
 			{
-				//if(_party.Contains(entityId))
-				//{
-				//	return false;
-				//}
-
 				_party.Add(entityId);
 				_partyTurned.Add(entityId);
-				//return true;
 			}
 
 			public int Count => _party.Count;
