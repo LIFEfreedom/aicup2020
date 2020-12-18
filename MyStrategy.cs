@@ -26,6 +26,7 @@ namespace Aicup2020
 
 		private readonly EntityType[] _emptyEntityTypes = Array.Empty<EntityType>();
 		private readonly EntityType[] _resourceEntityTypes = new EntityType[1] { EntityType.Resource };
+		private readonly EntityType[] _enemyBuilderUnitAndResourceEntityTypes = new EntityType[2] { EntityType.Resource, EntityType.BuilderUnit };
 
 		private struct BuilderTask
 		{
@@ -100,14 +101,15 @@ namespace Aicup2020
 		private readonly List<Entity> resources = new List<Entity>(1000);
 		private readonly List<Entity> otherEntities = new List<Entity>(100);
 		private readonly List<Entity> _enemyTroops = new List<Entity>(10);
+		private readonly List<Entity> _enemyBuilders = new List<Entity>(10);
 
 		private const int MyPositionEdge = 35;
-		private const double enemyRadiusDetection = 6.5d;
+		private const double enemyRadiusDetection = 7.5d;
 		private List<Entity> _leftEnemiesInMyBase = new(2);
 		private List<Entity> _rightEnemiesInMyBase = new(2);
-		private Party _leftDefenseParty = new(7, PartyType.Defense, new Vec2Int(9, 20), DefensePosition.Left);
-		private Party _rightDefenseParty = new(7, PartyType.Defense, new Vec2Int(20, 9), DefensePosition.Right);
-		private Party _firstAttackParty = new(20, PartyType.Attack, new Vec2Int(20, 20), DefensePosition.None);
+		private Party _leftDefenseParty = new(7, PartyType.Defense, new Vec2Int(10, 25), DefensePosition.Left);
+		private Party _rightDefenseParty = new(7, PartyType.Defense, new Vec2Int(25, 10), DefensePosition.Right);
+		private Party _firstAttackParty = new(15, PartyType.Attack, new Vec2Int(20, 20), DefensePosition.None);
 
 		private readonly Dictionary<int, EntityAction> _entityActions = new Dictionary<int, EntityAction>(10);
 		private Vec2Int _myBaseCenter = new Vec2Int(5, 5);
@@ -115,9 +117,10 @@ namespace Aicup2020
 		private int _totalFood = 0;
 		private int _consumedFood = 0;
 
-		private Vec2Int _moveTo = new Vec2Int(76, 4);
+		private Vec2Int _moveTo = new Vec2Int(4, 76);
 		private int _angle = 0;
 		private int Stage = 0;
+		private bool _chengeDirection = false;
 
 		private int _leftNearEnemyCount = 0;
 		private int _rightNearEnemyCount = 0;
@@ -208,11 +211,11 @@ namespace Aicup2020
 
 			int rangedBasesTasksCount = _builderTasks.Where(q => !q.IsHouse).Count(); ;
 
-			if (rangedBases.Count == 0 && rangedBasesTasksCount == 0 && _totalFood <= 25)
+			if (rangedBases.Count == 0 && rangedBasesTasksCount == 0 && _totalFood <= 20)
 				Stage = 1;
 			else if ((rangedBases.Count > 0 || rangedBasesTasksCount > 0) && _totalFood <= 25)
 				Stage = 2;
-			else if ((rangedBases.Count > 0 || rangedBasesTasksCount > 0) && _totalFood >= 25)
+			else if ((rangedBases.Count > 0 || rangedBasesTasksCount > 0) && _totalFood > 25)
 				Stage = 3;
 
 			FindNewBuilderTasks(ref lostResources);
@@ -229,7 +232,17 @@ namespace Aicup2020
 					continue;
 				}
 
-				result.EntityActions[builder.Id] = new EntityAction(null, null, new AttackAction(null, new AutoAttack(60, _resourceEntityTypes)), null);
+				IEnumerable<Entity> nearEnemyWorkers = _enemyBuilders.Where(q => Math.Abs(FindDistance(q.Position, builder.Position)) < 3.0f);
+				if (nearEnemyWorkers.Any())
+				{
+					Entity enemyWorker = nearEnemyWorkers.First();
+
+					result.EntityActions[builder.Id] = new EntityAction(new MoveAction(enemyWorker.Position, true, true), null, new AttackAction(enemyWorker.Id, new AutoAttack(3, _enemyBuilderUnitAndResourceEntityTypes)), null);
+				}
+				else
+				{
+					result.EntityActions[builder.Id] = new EntityAction(null, null, new AttackAction(null, new AutoAttack(60, _resourceEntityTypes)), null);
+				}
 			}
 
 			rangedBases.ForEach(rangedBase => RangedBaseLogic(rangedBase, ref result, ref lostResources));
@@ -279,8 +292,8 @@ namespace Aicup2020
 			bool rangedBasesExists = rangedBases.Where(q => q.Active).Any();
 
 			bool needBuildersWhenFirstStage = builders.Count < 25;
-			bool needBuildersWhenSecondStage = lostResources >= 100;
-			bool needBuildersWhenThirdStage = ((float)(builders.Count - 25) / _totalFood) <= _buildersPercentage;
+			bool needBuildersWhenSecondStage = needBuildersWhenFirstStage || lostResources >= 100;
+			bool needBuildersWhenThirdStage = ((float)(builders.Count - 25) / (_totalFood - 25)) <= _buildersPercentage;
 
 			EntityType buildingEntityType = builderBaseProperties.Build.Value.Options[0];
 
@@ -314,7 +327,7 @@ namespace Aicup2020
 					}
 				}
 
-				if (!isBuildTask && !builderTask.RepairAction.HasValue)
+				if (!isBuildTask)
 				{
 					if (!builderTask.RepairAction.HasValue || !TryGetBuilding(builderTask.RepairAction.Value.Target, out Entity repairingBuilding))
 						continue;
@@ -408,6 +421,7 @@ namespace Aicup2020
 			if (threatsWorker.Any())
 			{
 				result.EntityActions[builder.Id] = new EntityAction(new MoveAction(_myBaseCenter, true, false), null, null, null);
+
 				return true;
 			}
 
@@ -421,8 +435,8 @@ namespace Aicup2020
 				switch (_angle)
 				{
 					case 0:
-						_moveTo.X = 4;
-						_moveTo.Y = 76;
+						_moveTo.X = 76;
+						_moveTo.Y = 4;
 						break;
 					case 1:
 						_moveTo.X = 78;
@@ -443,17 +457,22 @@ namespace Aicup2020
 				}
 
 				_firstAttackParty.IsAttacking = false;
-				_angle++;
+
+				if(_chengeDirection)
+				{
+					_chengeDirection = false;
+				}
+				else
+					_angle++;
 			}
 
 			EntityProperties entityProperties = GetEntityProperties(unit.EntityType);
 
 			if (TryGetParty(unit.Id, out Party party))
 			{
-				party.Turn(unit.Id);
-
 				if (party.PartyType == PartyType.Defense)
 				{
+					party.Turn(unit.Id);
 					if (party.DefensePosition == DefensePosition.Left)
 					{
 						LeftDefensePartyLogic(ref party, entityProperties.SightRange, in result);
@@ -471,6 +490,20 @@ namespace Aicup2020
 				}
 				else if (party.PartyType == PartyType.Attack)
 				{
+					if(_leftDefenseParty.Count < _leftDefenseParty.Capacity)
+					{
+						_leftDefenseParty.Add(unit.Id);
+						LeftDefensePartyLogic(ref _leftDefenseParty, entityProperties.SightRange, in result);
+						return;
+					}
+
+					if (_rightDefenseParty.Count < _rightDefenseParty.Capacity)
+					{
+						_leftDefenseParty.Add(unit.Id);
+						LeftDefensePartyLogic(ref _rightDefenseParty, entityProperties.SightRange, in result);
+						return;
+					}
+
 					FirstAttackPartyLogic(entityProperties.SightRange, in result);
 					return;
 				}
@@ -517,26 +550,49 @@ namespace Aicup2020
 					{
 						if(_rightNearEnemyCount > 0 && _rightNearEnemyCount >= _leftNearEnemyCount)
 						{
-							moveAction = new MoveAction(new Vec2Int(78, 2), true, true);
+							_chengeDirection = true;
+							_moveTo = new Vec2Int(78, 2);
+							moveAction = new MoveAction(_moveTo, true, true);
 						}
 						else if (_leftNearEnemyCount > 0)
 						{
-							moveAction = new MoveAction(new Vec2Int(2,78), true, true);
+							_chengeDirection = true;
+							_moveTo = new Vec2Int(2, 78);
+							//moveAction = new MoveAction(new Vec2Int(2,78), true, true);
 						}
 						else if (_rightFarEnemyCount > 0 && _rightFarEnemyCount >= _leftFarEnemyCount)
 						{
-							moveAction = new MoveAction(new Vec2Int(78, 2), true, true);
+							_chengeDirection = true;
+							_moveTo = new Vec2Int(78, 2);
+							//moveAction = new MoveAction(new Vec2Int(78, 2), true, true);
 						}
 						else if (_leftFarEnemyCount > 0)
 						{
-							moveAction = new MoveAction(new Vec2Int(2, 78), true, true);
-						}
-						else
-						{
-							moveAction = new MoveAction(_moveTo, true, true);
+							_chengeDirection = true;
+							_moveTo = new Vec2Int(2, 78);
+							//moveAction = new MoveAction(new Vec2Int(2, 78), true, true);
 						}
 
+						moveAction = new MoveAction(_moveTo, true, true);
+
 						result.EntityActions[unit.Id] = new EntityAction(moveAction, null, new AttackAction(null, new AutoAttack(sightRange, _emptyEntityTypes)), null);
+						return;
+					}
+				}
+				else
+				{
+					if(_leftEnemiesInMyBase.Count > 0)
+					{
+						LeftDefensePartyLogic(ref party, sightRange, in result);
+						moveAction = result.EntityActions[unit.Id].MoveAction.Value;
+						return;
+					}
+
+					if(_rightEnemiesInMyBase.Count > 0)
+					{
+						RightDefensePartyLogic(ref party, sightRange, in result);
+						moveAction = result.EntityActions[unit.Id].MoveAction.Value;
+						return;
 					}
 				}
 
@@ -557,12 +613,12 @@ namespace Aicup2020
 			{
 				if (_leftEnemiesInMyBase.Count > 0)
 				{
-					Entity enemy = _leftEnemiesInMyBase[0];
+					Entity enemy = _leftEnemiesInMyBase.OrderByDescending(q=> FindDistance(q.Position, _myBaseCenter)).First();
 					result.EntityActions[unit.Id] = new EntityAction(new MoveAction(enemy.Position, true, false), null, new AttackAction(null, new AutoAttack(sightRange, _emptyEntityTypes)), null);
 				}
-				else if (_rightEnemiesInMyBase.Count > 0 && _rightDefenseParty.Count == 0)
+				else if (_rightEnemiesInMyBase.Count > 0/* && _rightDefenseParty.Count == 0*/)
 				{
-					Entity enemy = _rightEnemiesInMyBase[0];
+					Entity enemy = _rightEnemiesInMyBase.OrderByDescending(q => FindDistance(q.Position, _myBaseCenter)).First();
 					result.EntityActions[unit.Id] = new EntityAction(new MoveAction(enemy.Position, true, false), null, new AttackAction(null, new AutoAttack(sightRange, _emptyEntityTypes)), null);
 				}
 				else
@@ -575,12 +631,12 @@ namespace Aicup2020
 			{
 				if (_rightEnemiesInMyBase.Count > 0)
 				{
-					Entity enemy = _rightEnemiesInMyBase[0];
+					Entity enemy = _rightEnemiesInMyBase.OrderByDescending(q => FindDistance(q.Position, _myBaseCenter)).First();
 					result.EntityActions[unit.Id] = new EntityAction(new MoveAction(enemy.Position, true, false), null, new AttackAction(null, new AutoAttack(sightRange, _emptyEntityTypes)), null);
 				}
-				else if (_leftEnemiesInMyBase.Count > 0 && _leftDefenseParty.Count == 0)
+				else if (_leftEnemiesInMyBase.Count > 0 /*&& _leftDefenseParty.Count == 0*/)
 				{
-					Entity enemy = _leftEnemiesInMyBase[0];
+					Entity enemy = _leftEnemiesInMyBase.OrderByDescending(q => FindDistance(q.Position, _myBaseCenter)).First();
 					result.EntityActions[unit.Id] = new EntityAction(new MoveAction(enemy.Position, true, false), null, new AttackAction(null, new AutoAttack(sightRange, _emptyEntityTypes)), null);
 				}
 				else
@@ -664,7 +720,7 @@ namespace Aicup2020
 				int newHousesTasksCount = _newBuilderTasks.Where(q => q.IsHouse).Count();
 				int totalHousesTasksCount = housesTasksCount + newHousesTasksCount;
 
-				bool needHouseWhenFirstStage = _totalFood + totalHousesTasksCount * houseProperties.PopulationProvide <= 20;
+				bool needHouseWhenFirstStage = _totalFood + totalHousesTasksCount * houseProperties.PopulationProvide <= 15;
 				bool needHouseWhenSecondStage = totalHousesTasksCount < 2;
 				bool needHouseWhenThirdStage = foodDeference < 10 && totalHousesTasksCount < 3;
 				bool needAdditionalHouseWhenThirdStage = foodDeference < 15 && (totalHousesTasksCount < 4 && lostResources >= 200);
@@ -705,6 +761,11 @@ namespace Aicup2020
 				if(TryGetFreeUnitLocation(repairingBuilding.Position, repairTargetProperties.Size, out Vec2Int moveToBuilderPosition, builderIndex))
 				{
 					result.EntityActions[builder.Id] = new EntityAction(new MoveAction(moveToBuilderPosition, true, false), null, null, repairAction);
+					return true;
+				}
+				else
+				{
+					result.EntityActions[builder.Id] = new EntityAction(new MoveAction(repairingBuilding.Position, true, false), null, null, repairAction);
 					return true;
 				}
 			}
@@ -952,6 +1013,28 @@ namespace Aicup2020
 					int prevNum = num - 1;
 					if (CheckFreeLocation(i, prevNum, size, ignoreBuffer))
 					{
+						if(i <= 5 && prevNum <= 5)
+						{
+							bool next = false;
+							for(int k = 0; k < 5; k++)
+							{
+								for(int j = 0; j < 5; j++)
+								{
+									if(_cells[k][j] == CellType.Builder)
+									{
+										next = true;
+										break;
+									}
+								}
+
+								if (next)
+									break;
+							}
+
+							if (next)
+								continue;
+						}
+
 						buildingPosition = new Vec2Int(i, prevNum);
 						if (TryGetFreeUnitLocation(buildingPosition, size, out builderPosition))
 						{
@@ -961,6 +1044,28 @@ namespace Aicup2020
 
 					if (CheckFreeLocation(prevNum, i, size, ignoreBuffer))
 					{
+						if (i <= 5 && prevNum <= 5)
+						{
+							bool next = false;
+							for (int k = 0; k < 5; k++)
+							{
+								for (int j = 0; j < 5; j++)
+								{
+									if (_cells[k][j] == CellType.Builder)
+									{
+										next = true;
+										break;
+									}
+								}
+
+								if (next)
+									break;
+							}
+
+							if (next)
+								continue;
+						}
+
 						buildingPosition = new Vec2Int(prevNum, i);
 						if (TryGetFreeUnitLocation(buildingPosition, size, out builderPosition))
 						{
@@ -1159,6 +1264,7 @@ namespace Aicup2020
 							break;
 						case EntityType.BuilderUnit:
 							_cells[y][x] = CellType.Enemy;
+							_enemyBuilders.Add(entity);
 							break;
 						case EntityType.MeleeBase:
 							FillCells(x, y, turretProperties.Size, CellType.Building);
@@ -1197,7 +1303,7 @@ namespace Aicup2020
 
 					if (entity.Position.X <= MyPositionEdge && entity.Position.Y <= MyPositionEdge)
 					{
-						if (entity.Position.Y - entity.Position.X >= 0)
+						if (entity.Position.Y >= entity.Position.X)
 						{
 							_leftEnemiesInMyBase.Add(entity);
 						}
@@ -1216,6 +1322,7 @@ namespace Aicup2020
 			resources.Clear();
 			otherEntities.Clear();
 			_enemyTroops.Clear();
+			_enemyBuilders.Clear();
 
 			_freeBuilders.Clear();
 			builders.Clear();
